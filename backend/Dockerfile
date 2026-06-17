@@ -22,7 +22,6 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY backend/ /app/backend/
 COPY sim_chat/ /app/sim_chat/
 COPY src/ /app/src/
-COPY data/seeded/ /app/data/seeded/
 
 WORKDIR /app/backend
 

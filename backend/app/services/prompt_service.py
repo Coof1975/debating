@@ -10,6 +10,7 @@ from app.bootstrap import setup_paths
 setup_paths()
 
 from debating.models import CompanyProfile, Persona, PersonaRole, PersonaSection
+from debating.negotiation import negotiation_from_metadata
 from debating.prompts import build_all_prompts, build_persona_prompt
 
 from app.db.models import CompanyProfile as CompanyProfileModel
@@ -29,6 +30,8 @@ def persona_from_row(row: PersonaModel) -> Persona:
         key: PersonaSection(**section)
         for key, section in (row.sections or {}).items()
     }
+    metadata = row.extra_metadata or {}
+    negotiation = negotiation_from_metadata(metadata, role=row.role)
     return Persona(
         role=role,
         display_title=row.display_title,
@@ -40,7 +43,8 @@ def persona_from_row(row: PersonaModel) -> Persona:
         sections=sections,
         relationships=[],
         llm_instructions=row.llm_instructions,
-        metadata=row.extra_metadata or {},
+        metadata=metadata,
+        negotiation=negotiation,
     )
 
 

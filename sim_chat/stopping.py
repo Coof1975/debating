@@ -5,6 +5,7 @@ from __future__ import annotations
 from .config import MeetingConfig
 from .embeddings import compute_stagnation_signals
 from .models import DialogueTurn, MeetingState, SecretaryVerdict, TerminationReason
+from .proposals import check_proposal_consensus
 
 
 def check_max_turns(state: MeetingState) -> bool:
@@ -61,6 +62,13 @@ def check_consensus(state: MeetingState) -> bool:
         return False
     if state["turn_index"] < config.min_turns_before_consensus:
         return False
+
+    mode = config.proposal_consensus_mode
+    if mode in ("aggregate", "both") and check_proposal_consensus(state):
+        return True
+    if mode == "aggregate":
+        return False
+
     verdict = state.get("secretary_verdict")
     if not verdict:
         return False

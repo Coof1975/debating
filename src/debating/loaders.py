@@ -14,6 +14,7 @@ from .models import (
     PersonaRole,
     PersonaSection,
 )
+from .negotiation import default_negotiation_for_role
 
 COMPANY_SECTION_PATTERNS: list[tuple[str, str, str, re.Pattern[str]]] = [
     (
@@ -257,9 +258,11 @@ def load_persona(path: Path, role: PersonaRole) -> Persona:
         raw_content=content,
         sections=sections,
         llm_instructions=llm_instructions,
+        negotiation=default_negotiation_for_role(role),
         metadata={
             "section_keys": list(sections.keys()),
             "has_relationships": "relationships" in sections,
+            "negotiation": default_negotiation_for_role(role).model_dump(),
         },
     )
 

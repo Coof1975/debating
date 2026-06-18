@@ -21,6 +21,13 @@ class PersonaRelationshipSchema(BaseModel):
     behavior: str = ""
 
 
+class NegotiationProfileSchema(BaseModel):
+    compromise_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    min_interest_retention: float = Field(default=0.7, ge=0.0, le=1.0)
+    director_sensitivity: float = Field(default=0.6, ge=0.0, le=1.0)
+    deadlock_tolerance: float = Field(default=0.3, ge=0.0, le=1.0)
+
+
 class PersonaBase(BaseModel):
     role: str = Field(..., min_length=1, max_length=64)
     display_title: str
@@ -30,6 +37,7 @@ class PersonaBase(BaseModel):
     sections: dict[str, PersonaSectionSchema] = Field(default_factory=dict)
     relationships: list[PersonaRelationshipSchema] = Field(default_factory=list)
     llm_instructions: str = ""
+    negotiation: NegotiationProfileSchema | None = None
     is_active: bool = True
 
 
@@ -45,6 +53,7 @@ class PersonaUpdate(BaseModel):
     sections: dict[str, PersonaSectionSchema] | None = None
     relationships: list[PersonaRelationshipSchema] | None = None
     llm_instructions: str | None = None
+    negotiation: NegotiationProfileSchema | None = None
     is_active: bool | None = None
 
 

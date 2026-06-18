@@ -2,11 +2,26 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { AdminLayout } from '../components/AdminLayout'
-import type { PersonaSection } from '../types'
+import type { NegotiationProfile, PersonaSection } from '../types'
 
 const inputClass =
   'w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white'
 const labelClass = 'block text-sm font-medium text-slate-300'
+
+const DEFAULT_NEGOTIATION: NegotiationProfile = {
+  compromise_threshold: 0.5,
+  min_interest_retention: 0.7,
+  director_sensitivity: 0.6,
+  deadlock_tolerance: 0.3,
+}
+
+const ROLE_NEGOTIATION_DEFAULTS: Record<string, NegotiationProfile> = {
+  CFO: { compromise_threshold: 0.25, min_interest_retention: 0.85, director_sensitivity: 0.45, deadlock_tolerance: 0.2 },
+  PRODUCT: { compromise_threshold: 0.35, min_interest_retention: 0.75, director_sensitivity: 0.5, deadlock_tolerance: 0.25 },
+  MARKETING: { compromise_threshold: 0.55, min_interest_retention: 0.65, director_sensitivity: 0.65, deadlock_tolerance: 0.4 },
+  SALE: { compromise_threshold: 0.65, min_interest_retention: 0.6, director_sensitivity: 0.7, deadlock_tolerance: 0.45 },
+  CEO: { compromise_threshold: 0.7, min_interest_retention: 0.55, director_sensitivity: 0.85, deadlock_tolerance: 0.35 },
+}
 
 function emptySection(): PersonaSection {
   return { key: '', title: '', content: '' }
@@ -28,6 +43,7 @@ export function PersonaEditPage() {
   const [toneOfVoice, setToneOfVoice] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [sections, setSections] = useState<PersonaSection[]>([emptySection()])
+  const [negotiation, setNegotiation] = useState<NegotiationProfile>(DEFAULT_NEGOTIATION)
   const [previewPrompt, setPreviewPrompt] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -46,6 +62,7 @@ export function PersonaEditPage() {
         setIsActive(persona.is_active)
         const sectionList = Object.values(persona.sections ?? {})
         setSections(sectionList.length > 0 ? sectionList : [emptySection()])
+        setNegotiation(persona.negotiation ?? ROLE_NEGOTIATION_DEFAULTS[persona.role] ?? DEFAULT_NEGOTIATION)
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false))
@@ -72,6 +89,17 @@ export function PersonaEditPage() {
       result[key] = { ...section, key }
     }
     return result
+  }
+
+  function updateNegotiation(field: keyof NegotiationProfile, value: number) {
+    setNegotiation((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function applyRoleNegotiationDefaults(nextRole: string) {
+    const key = nextRole.trim().toUpperCase()
+    if (ROLE_NEGOTIATION_DEFAULTS[key]) {
+      setNegotiation(ROLE_NEGOTIATION_DEFAULTS[key])
+    }
   }
 
   async function handlePreviewPrompt() {
@@ -113,6 +141,7 @@ export function PersonaEditPage() {
           tone_of_voice: toneOfVoice,
           is_active: isActive,
           sections: sectionsPayload,
+          negotiation,
         })
       } else {
         await api.updatePersona(roleParam!, {
@@ -122,6 +151,7 @@ export function PersonaEditPage() {
           tone_of_voice: toneOfVoice,
           is_active: isActive,
           sections: sectionsPayload,
+          negotiation,
         })
       }
       navigate('/admin/personas')
@@ -155,7 +185,11 @@ export function PersonaEditPage() {
             <label className={labelClass}>Role</label>
             <input
               value={role}
-              onChange={(e) => setRole(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                const next = e.target.value.toUpperCase()
+                setRole(next)
+                if (isNew) applyRoleNegotiationDefaults(next)
+              }}
               className={inputClass}
               required
               disabled={!isNew}
@@ -206,6 +240,40 @@ export function PersonaEditPage() {
           />
           Active (available for new meetings)
         </label>
+
+        <section className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+          <h2 className="text-lg font-medium text-white">Hồ sơ đàm phán</h2>
+          <p className="text-sm text-slate-400">
+            Điều chỉnh mức thỏa hiệp và áp lực từ Sếp khi agent suy nghĩ trong cuộc họp.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {(
+              [
+                ['compromise_threshold', 'Chỉ số thỏa hiệp', '0 = cực cứng, 1 = dễ nhượng'],
+                ['min_interest_retention', 'Giữ lợi ích bộ phận', 'Tối thiểu % lợi ích cần giữ'],
+                ['director_sensitivity', 'Nhạy cảm áp lực Sếp', 'Cao = dễ nhún khi họp bế tắc'],
+                ['deadlock_tolerance', 'Chịu bế tắc', 'Cao = chấp nhận tranh lâu hơn'],
+              ] as const
+            ).map(([field, label, hint]) => (
+              <div key={field} className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <label className={labelClass}>{label}</label>
+                  <span className="text-xs text-slate-400">{negotiation[field].toFixed(2)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={negotiation[field]}
+                  onChange={(e) => updateNegotiation(field, Number(e.target.value))}
+                  className="w-full"
+                />
+                <p className="text-xs text-slate-500">{hint}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="space-y-4">
           <div className="flex items-center justify-between">

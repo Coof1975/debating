@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .config import MeetingConfig
-from .models import MeetingState, SecretaryVerdict
+from .models import MeetingState, NegotiationProfile, SecretaryVerdict
 from .relationship import build_relationship_matrix
 
 if TYPE_CHECKING:
@@ -52,6 +52,27 @@ def _resolve_opening_speaker(participant_ids: list[str], config: MeetingConfig) 
     if opener in participant_ids:
         return opener
     return participant_ids[0]
+
+
+def _build_negotiation_profiles(
+    participant_ids: list[str],
+    personas: dict[str, Persona] | None,
+) -> dict[str, NegotiationProfile]:
+    _ensure_src_on_path()
+    from debating.negotiation import default_negotiation_for_role, negotiation_from_metadata
+
+    profiles: dict[str, NegotiationProfile] = {}
+    for pid in participant_ids:
+        if personas and pid in personas:
+            persona = personas[pid]
+            if persona.negotiation is not None:
+                resolved = persona.negotiation
+            else:
+                resolved = negotiation_from_metadata(persona.metadata, role=pid)
+        else:
+            resolved = default_negotiation_for_role(pid)
+        profiles[pid] = NegotiationProfile.model_validate(resolved.model_dump())
+    return profiles
 
 
 def load_prompts(
@@ -148,6 +169,7 @@ def create_initial_state(
             persona_names = {pid: persona_names[pid] for pid in participant_ids}
 
     opening_speaker = _resolve_opening_speaker(participant_ids, config)
+    negotiation_profiles = _build_negotiation_profiles(participant_ids, filtered_personas)
 
     return MeetingState(
         messages=[],
@@ -168,6 +190,11 @@ def create_initial_state(
         turns_since_secretary=0,
         transcript_summary="",
         summary_through_turn=0,
+        hidden_turns=[],
+        last_monologue={},
+        negotiation_profiles=negotiation_profiles,
+        working_proposals=[],
+        shared_facts=[],
     )
 
 

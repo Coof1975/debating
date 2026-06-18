@@ -5,7 +5,8 @@ import { MeetingHeader } from '../../components/meeting/MeetingHeader'
 import { MeetingTabNav } from '../../components/meeting/MeetingTabNav'
 import { WorkspaceLayout } from '../../components/WorkspaceLayout'
 import { useMeetingStream } from '../../hooks/useMeetingStream'
-import type { LlmProviderOption, Meeting } from '../../types'
+import { parseHiddenTurns } from '../../lib/hiddenTurns'
+import type { LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
 import { MeetingHubProvider, type MeetingHubContextValue } from './MeetingHubContext'
 
 export function MeetingHubPage() {
@@ -21,6 +22,7 @@ export function MeetingHubPage() {
   const [rerunning, setRerunning] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showRerun, setShowRerun] = useState(false)
+  const [showInternalReasoning, setShowInternalReasoning] = useState(true)
   const [providerId, setProviderId] = useState('openai')
   const [modelId, setModelId] = useState('gpt-4o-mini')
 
@@ -64,6 +66,15 @@ export function MeetingHubPage() {
   )
 
   const turns = isStreaming ? stream.turns : (meeting?.record?.messages ?? [])
+  const hiddenTurns = isStreaming
+    ? stream.hiddenTurns
+    : parseHiddenTurns(meeting?.record?.metadata?.hidden_turns)
+  const workingProposals: WorkingProposal[] = isStreaming
+    ? stream.workingProposals
+    : ((meeting?.record?.metadata?.working_proposals as WorkingProposal[] | undefined) ?? [])
+  const sharedFacts: SharedFact[] = isStreaming
+    ? stream.sharedFacts
+    : ((meeting?.record?.metadata?.shared_facts as SharedFact[] | undefined) ?? [])
   const insight = isStreaming ? stream.insightReport : (meeting?.insight_report ?? '')
   const displayError = error ?? stream.error ?? meeting?.error_message ?? null
 
@@ -159,6 +170,11 @@ export function MeetingHubPage() {
     isCompleted,
     stream,
     turns,
+    hiddenTurns,
+    showInternalReasoning,
+    setShowInternalReasoning,
+    workingProposals,
+    sharedFacts,
     insight,
     displayError,
     starting,

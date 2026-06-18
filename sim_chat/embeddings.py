@@ -144,3 +144,19 @@ def compute_stagnation_signals(
         claim_overlap=claim_overlap,
         is_stagnant=is_stagnant,
     )
+
+
+def is_duplicate_fact(
+    candidate: str,
+    existing_facts: list[str],
+    *,
+    threshold: float = 0.85,
+) -> bool:
+    """Return True when candidate is semantically similar to an existing fact."""
+    normalized = candidate.strip()
+    if not normalized:
+        return True
+    for existing in existing_facts:
+        if cosine_similarity(normalized, existing) >= threshold:
+            return True
+    return False

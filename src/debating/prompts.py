@@ -6,11 +6,13 @@ from .models import (
     ROLE_DISPLAY,
     CompanyProfile,
     CompanySection,
+    NegotiationProfile,
     Persona,
     PersonaPrompt,
     PersonaRole,
     PersonaSection,
 )
+from .negotiation import format_negotiation_prompt_block, negotiation_from_metadata
 
 def _meeting_rules(meeting_topic: str | None = None) -> str:
     if meeting_topic:
@@ -64,7 +66,7 @@ def _format_persona_sections(sections: dict[str, PersonaSection]) -> str:
             seen.add(key)
 
     for key, section in sections.items():
-        if key not in seen and key != "llm_instructions":
+        if key not in seen and key not in ("llm_instructions", "negotiation"):
             blocks.append(_format_section_block(section.title, section.content))
 
     return "\n\n".join(blocks)
@@ -88,6 +90,10 @@ def build_persona_prompt(
 ) -> PersonaPrompt:
     company_sections = company.sections_for_role(persona.role)
     participants = _other_participants(persona.role, all_personas)
+    negotiation = persona.negotiation or negotiation_from_metadata(
+        persona.metadata,
+        role=persona.role,
+    )
 
     identity_lines = [
         f"Bạn là **{persona.name}**, {persona.display_title} tại {company.company_name}.",
@@ -122,6 +128,8 @@ Dưới đây là các dữ kiện công ty mà bạn biết và có thể việ
 
 # THÀNH VIÊN KHÁC TRONG CUỘC HỌP
 {chr(10).join(participants)}
+
+{format_negotiation_prompt_block(negotiation)}
 
 {_meeting_rules(meeting_topic)}
 

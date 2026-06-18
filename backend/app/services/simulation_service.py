@@ -69,6 +69,7 @@ def _build_meeting_config(row: Meeting) -> MeetingConfig:
     allowed = set(MeetingConfig.model_fields.keys())
     filtered = {key: value for key, value in cfg_data.items() if key in allowed}
     config = MeetingConfig(**filtered)
+    config = config.model_copy(update={"monologue_in_sse": True})
 
     stakeholders = [pid for pid in config.key_stakeholders if pid in row.participant_ids]
     if stakeholders:
@@ -205,7 +206,18 @@ def replay_events_from_record(row: Meeting) -> list[dict[str, Any]]:
         },
     ]
 
+    hidden_by_turn: dict[int, dict[str, Any]] = {}
+    for hidden in record.metadata.get("hidden_turns") or []:
+        if not isinstance(hidden, dict):
+            continue
+        turn_index = hidden.get("turn_index")
+        if isinstance(turn_index, int):
+            hidden_by_turn[turn_index] = hidden
+
     for turn in record.messages:
+        hidden = hidden_by_turn.get(turn.turn_index)
+        if hidden:
+            events.append({"type": "monologue", "data": hidden})
         events.append({"type": "turn", "data": turn.model_dump()})
 
     verdict = record.metadata.get("secretary_verdict")

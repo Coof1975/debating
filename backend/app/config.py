@@ -20,8 +20,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/debating"
+    # Local default: Docker Postgres on localhost (see backend/.env)
+    database_url: str = "postgresql+psycopg://fss:fss%40123@localhost:5432/debating"
+    # Cloud: set DATABASE_URL in .env to Supabase pooler/direct URL (see .env.example)
+
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    # Cloud: set CORS_ORIGIN_REGEX=https://.*\.vercel\.app in .env for Vercel previews
     cors_origin_regex: str | None = None
     default_max_turns: int = 25
     api_prefix: str = "/api"

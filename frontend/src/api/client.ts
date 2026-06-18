@@ -19,7 +19,7 @@ import type {
   UpdateMeetingPayload,
 } from '../types'
 
-/** Empty in dev (Vite proxies /api); set VITE_API_BASE_URL on Vercel to the Railway host. */
+/** Local dev: empty → Vite proxies /api to localhost:8000. Cloud: set VITE_API_BASE_URL. */
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 const API = API_BASE ? `${API_BASE}/api` : '/api'
 

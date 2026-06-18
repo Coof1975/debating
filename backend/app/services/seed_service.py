@@ -11,6 +11,18 @@ from app.db.models import CompanyProfile, Persona
 from app.services.prompt_service import rebuild_all_prompts_in_db
 
 
+def _metadata_with_negotiation(data: dict, role: str) -> dict:
+    from debating.negotiation import default_negotiation_for_role
+
+    metadata = dict(data.get("metadata") or {})
+    if not metadata.get("negotiation"):
+        if data.get("negotiation"):
+            metadata["negotiation"] = data["negotiation"]
+        else:
+            metadata["negotiation"] = default_negotiation_for_role(role).model_dump()
+    return metadata
+
+
 def seed_from_files(db: Session, *, force: bool = False) -> dict[str, int]:
     settings = get_settings()
     seeded_dir = settings.seeded_data_dir
@@ -66,7 +78,7 @@ def seed_from_files(db: Session, *, force: bool = False) -> dict[str, int]:
                 sections=data.get("sections", {}),
                 relationships=data.get("relationships", []),
                 llm_instructions=data.get("llm_instructions", ""),
-                extra_metadata=data.get("metadata", {}),
+                extra_metadata=_metadata_with_negotiation(data, role),
                 is_active=True,
             )
             db.add(row)
@@ -80,7 +92,7 @@ def seed_from_files(db: Session, *, force: bool = False) -> dict[str, int]:
             existing.sections = data.get("sections", {})
             existing.relationships = data.get("relationships", [])
             existing.llm_instructions = data.get("llm_instructions", "")
-            existing.extra_metadata = data.get("metadata", {})
+            existing.extra_metadata = _metadata_with_negotiation(data, role)
             existing.is_active = True
 
         counts["personas"] += 1

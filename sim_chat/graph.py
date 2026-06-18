@@ -87,6 +87,18 @@ def record_from_state(
             ),
             "transcript_summary": final_state.get("transcript_summary", ""),
             "summary_through_turn": final_state.get("summary_through_turn", 0),
+            "hidden_turns": [
+                turn.model_dump(mode="json")
+                for turn in final_state.get("hidden_turns", [])
+            ],
+            "working_proposals": [
+                proposal.model_dump(mode="json")
+                for proposal in final_state.get("working_proposals", [])
+            ],
+            "shared_facts": [
+                fact.model_dump(mode="json")
+                for fact in final_state.get("shared_facts", [])
+            ],
         },
     )
 
@@ -136,7 +148,10 @@ def iter_meeting_events(
     app = build_meeting_graph(provider)
 
     prev_message_count = 0
+    prev_hidden_count = 0
     prev_verdict_key: tuple | None = None
+    prev_proposals_key: tuple | None = None
+    prev_facts_key: tuple | None = None
     final_state: MeetingState | None = None
 
     yield {
@@ -150,6 +165,16 @@ def iter_meeting_events(
 
     for state in app.stream(initial, stream_mode="values"):
         final_state = state
+        if config.monologue_in_sse:
+            hidden_turns = state.get("hidden_turns", [])
+            if len(hidden_turns) > prev_hidden_count:
+                hidden_turn = hidden_turns[-1]
+                prev_hidden_count = len(hidden_turns)
+                yield {
+                    "type": "monologue",
+                    "data": hidden_turn.model_dump(),
+                }
+
         messages = state.get("messages", [])
         if len(messages) > prev_message_count:
             turn = messages[-1]
@@ -158,6 +183,34 @@ def iter_meeting_events(
                 "type": "turn",
                 "data": turn.model_dump(),
             }
+
+        if config.enable_working_proposals:
+            proposals = state.get("working_proposals") or []
+            proposals_key = tuple(
+                proposal.model_dump(mode="json") for proposal in proposals
+            )
+            if proposals_key != prev_proposals_key:
+                prev_proposals_key = proposals_key
+                yield {
+                    "type": "proposal_update",
+                    "data": {
+                        "proposals": [
+                            proposal.model_dump(mode="json") for proposal in proposals
+                        ],
+                    },
+                }
+
+        if config.enable_shared_facts:
+            facts = state.get("shared_facts") or []
+            facts_key = tuple(fact.model_dump(mode="json") for fact in facts)
+            if facts_key != prev_facts_key:
+                prev_facts_key = facts_key
+                yield {
+                    "type": "fact_update",
+                    "data": {
+                        "facts": [fact.model_dump(mode="json") for fact in facts],
+                    },
+                }
 
         verdict = state.get("secretary_verdict")
         if verdict is not None:

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Persona as PersonaModel
-from app.schemas.persona import PersonaCreate, PersonaResponse, PersonaUpdate
+from app.schemas.persona import NegotiationProfileSchema, PersonaCreate, PersonaResponse, PersonaUpdate
 from app.services.prompt_service import build_system_prompt_for_role, rebuild_all_prompts_in_db
 
 
@@ -28,7 +28,32 @@ def _relationships_to_list(relationships: list) -> list:
     return [rel.model_dump() for rel in relationships]
 
 
+def _negotiation_to_metadata(
+    negotiation: NegotiationProfileSchema | dict | None,
+    *,
+    role: str,
+) -> dict:
+    from debating.negotiation import default_negotiation_for_role
+
+    if negotiation is not None:
+        if isinstance(negotiation, dict):
+            profile = NegotiationProfileSchema.model_validate(negotiation).model_dump()
+        else:
+            profile = negotiation.model_dump()
+    else:
+        profile = default_negotiation_for_role(role).model_dump()
+    return profile
+
+
+def _negotiation_from_metadata(metadata: dict | None, *, role: str) -> NegotiationProfileSchema:
+    from debating.negotiation import negotiation_from_metadata
+
+    resolved = negotiation_from_metadata(metadata, role=role)
+    return NegotiationProfileSchema.model_validate(resolved.model_dump())
+
+
 def to_response(row: PersonaModel) -> PersonaResponse:
+    metadata = row.extra_metadata or {}
     return PersonaResponse(
         role=row.role,
         display_title=row.display_title,
@@ -38,10 +63,11 @@ def to_response(row: PersonaModel) -> PersonaResponse:
         sections=row.sections or {},
         relationships=row.relationships or [],
         llm_instructions=row.llm_instructions,
+        negotiation=_negotiation_from_metadata(metadata, role=row.role),
         is_active=row.is_active,
         source_file=row.source_file,
         system_prompt=row.system_prompt,
-        metadata=row.extra_metadata or {},
+        metadata=metadata,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -71,6 +97,7 @@ def create_persona(db: Session, payload: PersonaCreate) -> PersonaResponse:
         raise ValueError(f"Persona already exists: {role}")
 
     sections_dict = _sections_to_dict(payload.sections)
+    negotiation_profile = _negotiation_to_metadata(payload.negotiation, role=role)
     row = PersonaModel(
         role=role,
         display_title=payload.display_title,
@@ -81,7 +108,10 @@ def create_persona(db: Session, payload: PersonaCreate) -> PersonaResponse:
         relationships=_relationships_to_list(payload.relationships),
         llm_instructions=_llm_instructions_from_sections(sections_dict),
         is_active=payload.is_active,
-        extra_metadata={"section_keys": list(payload.sections.keys())},
+        extra_metadata={
+            "section_keys": list(payload.sections.keys()),
+            "negotiation": negotiation_profile,
+        },
     )
     db.add(row)
     db.flush()
@@ -104,6 +134,14 @@ def update_persona(db: Session, role: str, payload: PersonaUpdate) -> PersonaRes
         }
     if "relationships" in updates and updates["relationships"] is not None:
         updates["relationships"] = _relationships_to_list(updates["relationships"])
+
+    if "negotiation" in updates:
+        negotiation_payload = updates.pop("negotiation")
+        negotiation_profile = _negotiation_to_metadata(negotiation_payload, role=row.role)
+        row.extra_metadata = {
+            **(row.extra_metadata or {}),
+            "negotiation": negotiation_profile,
+        }
 
     for field, value in updates.items():
         setattr(row, field, value)

@@ -47,3 +47,15 @@ class MeetingConfig(BaseModel):
     llm_temperature: float = 0.9
     max_output_tokens: int = 1024
     use_mock: bool = False
+    enable_internal_monologue: bool = True
+    monologue_in_sse: bool = False
+    enable_dynamic_compromise: bool = True
+    enable_working_proposals: bool = True
+    proposal_consensus_mode: Literal["secretary", "aggregate", "both"] = "both"
+    max_active_proposals: int = 5
+    enable_shared_facts: bool = True
+    fact_extraction_min_confidence: float = 0.6
+    max_shared_facts: int = 20
+    fact_dedup_similarity_threshold: float = 0.85
+    reasoning_max_tokens: int = 512
+    speech_max_tokens: int = 512

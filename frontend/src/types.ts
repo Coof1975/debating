@@ -6,6 +6,46 @@ export type DialogueTurn = {
   turn_index: number
 }
 
+export type InternalMonologue = {
+  absorb: string
+  compromise_space: string
+  stance_shift: number
+}
+
+export type HiddenTurn = {
+  speaker_id: string
+  turn_index: number
+  monologue: InternalMonologue
+}
+
+export type ProposalApproval = {
+  persona_id: string
+  score: number
+  concerns: string
+}
+
+export type WorkingProposal = {
+  id: string
+  author_id: string
+  turn_index: number
+  title: string
+  description: string
+  approvals: Record<string, ProposalApproval>
+  aggregate_score: number
+  status: string
+  parent_id: string | null
+}
+
+export type SharedFact = {
+  id: string
+  source_speaker_id: string
+  turn_index: number
+  fact: string
+  category: string
+  confidence: number
+  accepted_by: Record<string, boolean>
+}
+
 export type MeetingListItem = {
   id: string
   topic: string
@@ -152,6 +192,13 @@ export type PersonaRelationship = {
   behavior: string
 }
 
+export type NegotiationProfile = {
+  compromise_threshold: number
+  min_interest_retention: number
+  director_sensitivity: number
+  deadlock_tolerance: number
+}
+
 export type Persona = {
   role: string
   display_title: string
@@ -161,6 +208,7 @@ export type Persona = {
   sections: Record<string, PersonaSection>
   relationships: PersonaRelationship[]
   llm_instructions: string
+  negotiation?: NegotiationProfile | null
   is_active: boolean
   source_file: string
   system_prompt: string
@@ -178,6 +226,7 @@ export type PersonaCreatePayload = {
   sections?: Record<string, PersonaSection>
   relationships?: PersonaRelationship[]
   llm_instructions?: string
+  negotiation?: NegotiationProfile | null
   is_active?: boolean
 }
 
@@ -189,6 +238,7 @@ export type PersonaUpdatePayload = {
   sections?: Record<string, PersonaSection>
   relationships?: PersonaRelationship[]
   llm_instructions?: string
+  negotiation?: NegotiationProfile | null
   is_active?: boolean
 }
 

@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from .negotiation import NegotiationProfile
+
 
 class PersonaRole(str, Enum):
     CEO = "CEO"
@@ -96,6 +98,7 @@ class Persona(BaseModel):
     relationships: list[PersonaRelationship] = Field(default_factory=list)
     llm_instructions: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
+    negotiation: NegotiationProfile | None = None
 
 
 class PersonaPrompt(BaseModel):

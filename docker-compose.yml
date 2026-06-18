@@ -1,20 +1,49 @@
+# Local development stack
+#
+# 1. Start Postgres:
+#      docker compose up -d postgres
+# 2. Backend (from repo root):
+#      cd backend && alembic upgrade head && uvicorn app.main:app --reload --port 8000
+# 3. Frontend:
+#      cd frontend && npm run dev
+#
+# Cloud deploy: use Supabase DATABASE_URL on Railway (backend/.env.example)
+# and copy frontend/vercel.cloud.json → frontend/vercel.json for Vercel.
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: debating-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Match your existing Docker Postgres (password @ → %40 in DATABASE_URL)
+      POSTGRES_USER: fss
+      POSTGRES_PASSWORD: fss@123
       POSTGRES_DB: debating
     ports:
       - "5432:5432"
     volumes:
       - debating_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d debating"]
+      test: ["CMD-SHELL", "pg_isready -U fss -d debating"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Optional: run API in Docker (uncomment for full containerized stack)
+  # backend:
+  #   build:
+  #     context: .
+  #     dockerfile: backend/Dockerfile
+  #   container_name: debating-backend
+  #   ports:
+  #     - "8000:8000"
+  #   env_file:
+  #     - backend/.env
+  #   environment:
+  #     DATABASE_URL: postgresql+psycopg://fss:fss%40123@postgres:5432/debating
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
 
 volumes:
   debating_pg_data:

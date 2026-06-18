@@ -9,56 +9,43 @@ type MeetingTabNavProps = {
   status: string
 }
 
-const activeClass =
-  'border-indigo-500 text-indigo-200'
+const activeClass = 'border-indigo-500 text-indigo-200'
 const inactiveClass =
   'border-transparent text-slate-400 hover:border-slate-600 hover:text-slate-200'
-const disabledClass =
-  'border-transparent text-slate-600 cursor-not-allowed'
+const disabledClass = 'border-transparent text-slate-600 cursor-not-allowed'
 
 export function MeetingTabNav({ meetingId, status }: MeetingTabNavProps) {
   const base = `/meetings/${meetingId}`
   const simEnabled = canAccessSimulationTab(status)
   const chatEnabled = canAccessChatTab(status)
 
+  const tabClass = (isActive: boolean) =>
+    `scroll-tabs-item -mb-px ${isActive ? activeClass : inactiveClass}`
+
   return (
-    <nav className="mb-8 flex gap-1 border-b border-slate-800">
-      <NavLink
-        to={`${base}/overview`}
-        className={({ isActive }) =>
-          `-mb-px border-b-2 px-4 py-2.5 text-sm font-medium ${isActive ? activeClass : inactiveClass}`
-        }
-      >
+    <nav
+      className="scroll-tabs mb-6 sm:mb-8"
+      aria-label="Meeting sections"
+    >
+      <NavLink to={`${base}/overview`} className={({ isActive }) => tabClass(isActive)}>
         Tổng quan
       </NavLink>
 
       {simEnabled ? (
-        <NavLink
-          to={`${base}/simulation`}
-          className={({ isActive }) =>
-            `-mb-px border-b-2 px-4 py-2.5 text-sm font-medium ${isActive ? activeClass : inactiveClass}`
-          }
-        >
+        <NavLink to={`${base}/simulation`} className={({ isActive }) => tabClass(isActive)}>
           Simulation
         </NavLink>
       ) : (
-        <span className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium ${disabledClass}`}>
-          Simulation
-        </span>
+        <span className={`scroll-tabs-item -mb-px ${disabledClass}`}>Simulation</span>
       )}
 
       {chatEnabled ? (
-        <NavLink
-          to={`${base}/chat`}
-          className={({ isActive }) =>
-            `-mb-px border-b-2 px-4 py-2.5 text-sm font-medium ${isActive ? activeClass : inactiveClass}`
-          }
-        >
+        <NavLink to={`${base}/chat`} className={({ isActive }) => tabClass(isActive)}>
           Chat
         </NavLink>
       ) : (
         <span
-          className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium ${disabledClass}`}
+          className={`scroll-tabs-item -mb-px ${disabledClass}`}
           title="Hoàn thành simulation trước khi chat"
         >
           Chat

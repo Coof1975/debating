@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { api } from '../../api/client'
 
-export function AdminSeedPanel() {
+type AdminSeedPanelProps = {
+  compact?: boolean
+}
+
+export function AdminSeedPanel({ compact = false }: AdminSeedPanelProps) {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -26,6 +30,36 @@ export function AdminSeedPanel() {
     }
   }
 
+  if (compact) {
+    return (
+      <div>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+          Database
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleSeed(false)}
+            className="btn-secondary min-h-9 px-3 py-2 text-xs"
+          >
+            Seed from files
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handleSeed(true)}
+            className="btn-danger min-h-9 px-3 py-2 text-xs"
+          >
+            Force re-seed
+          </button>
+        </div>
+        {message && <p className="mt-2 text-xs text-emerald-400">{message}</p>}
+        {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="mt-8 border-t border-slate-800 pt-6">
       <p className="px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -36,7 +70,7 @@ export function AdminSeedPanel() {
           type="button"
           disabled={loading}
           onClick={() => handleSeed(false)}
-          className="block w-full rounded-lg border border-slate-700 px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-800/60 disabled:opacity-50"
+          className="block w-full min-h-11 rounded-xl border border-slate-700 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800/60 disabled:opacity-50"
         >
           Seed from files
         </button>
@@ -44,7 +78,7 @@ export function AdminSeedPanel() {
           type="button"
           disabled={loading}
           onClick={() => handleSeed(true)}
-          className="block w-full rounded-lg border border-rose-500/30 px-3 py-2 text-left text-xs text-rose-300 hover:bg-rose-950/30 disabled:opacity-50"
+          className="block w-full min-h-11 rounded-xl border border-rose-500/30 px-3 py-2.5 text-left text-xs text-rose-300 hover:bg-rose-950/30 disabled:opacity-50"
         >
           Force re-seed
         </button>

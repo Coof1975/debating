@@ -8,16 +8,20 @@ export function AppHeader({ zone }: AppHeaderProps) {
   const homeTo = zone === 'admin' ? '/admin/personas' : '/'
 
   return (
-    <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-        <Link to={homeTo} className="text-lg font-semibold tracking-tight text-white">
-          Debating Simulator
+    <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md supports-[backdrop-filter]:bg-slate-900/75">
+      <div className="page-container flex min-h-14 items-center justify-between gap-3 py-2 sm:min-h-16 sm:py-3">
+        <Link
+          to={homeTo}
+          className="min-w-0 truncate text-base font-semibold tracking-tight text-white sm:text-lg"
+        >
+          <span className="sm:hidden">Debating</span>
+          <span className="hidden sm:inline">Debating Simulator</span>
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex rounded-lg border border-slate-700 p-0.5 text-xs font-medium">
+        <div className="flex shrink-0 items-center">
+          <div className="flex rounded-xl border border-slate-700 p-0.5 text-xs font-medium">
             <Link
               to="/"
-              className={`rounded-md px-3 py-1.5 ${
+              className={`rounded-lg px-2.5 py-2 sm:px-3 sm:py-1.5 ${
                 zone === 'workspace'
                   ? 'bg-indigo-600 text-white'
                   : 'text-slate-400 hover:text-white'
@@ -27,7 +31,7 @@ export function AppHeader({ zone }: AppHeaderProps) {
             </Link>
             <Link
               to="/admin/personas"
-              className={`rounded-md px-3 py-1.5 ${
+              className={`rounded-lg px-2.5 py-2 sm:px-3 sm:py-1.5 ${
                 zone === 'admin'
                   ? 'bg-indigo-600 text-white'
                   : 'text-slate-400 hover:text-white'

@@ -19,7 +19,7 @@ export function MeetingOverviewTab() {
   } = useMeetingHub()
 
   return (
-    <div className="space-y-6">
+    <div className="section-gap">
       {displayError && (
         <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
           {displayError}
@@ -27,7 +27,7 @@ export function MeetingOverviewTab() {
       )}
 
       {isPending && (
-        <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-5">
+        <div className="card-padded border-indigo-500/30 bg-indigo-950/20">
           <h2 className="text-sm font-semibold text-indigo-200">
             Meeting đã tạo — chưa chạy simulation
           </h2>
@@ -42,7 +42,7 @@ export function MeetingOverviewTab() {
       )}
 
       {isStreaming && (
-        <div className="rounded-xl border border-sky-500/30 bg-sky-950/20 p-5">
+        <div className="card-padded border-sky-500/30 bg-sky-950/20">
           <h2 className="text-sm font-semibold text-sky-200">Simulation đang chạy</h2>
           <p className="mt-2 text-sm text-slate-300">
             Theo dõi transcript và insight report trên tab Simulation.
@@ -57,21 +57,21 @@ export function MeetingOverviewTab() {
       )}
 
       {isCompleted && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-5">
+        <div className="card-padded border-emerald-500/30 bg-emerald-950/20">
           <h2 className="text-sm font-semibold text-emerald-200">Simulation đã hoàn thành</h2>
           <p className="mt-2 text-sm text-slate-300">
             Xem lại biên bản thảo luận và insight report, hoặc chat trực tiếp với persona.
           </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3">
             <Link
               to={`/meetings/${meetingId}/simulation`}
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+              className="btn-secondary"
             >
               Xem simulation
             </Link>
             <Link
               to={`/meetings/${meetingId}/chat`}
-              className="rounded-lg border border-indigo-500/40 px-4 py-2 text-sm text-indigo-200 hover:bg-indigo-950/40"
+              className="btn-primary border border-indigo-500/40 bg-indigo-950/40 text-indigo-100 hover:bg-indigo-900/50"
             >
               Chat với persona
             </Link>
@@ -80,7 +80,7 @@ export function MeetingOverviewTab() {
       )}
 
       {meeting.status === 'failed' && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-5">
+        <div className="card-padded border-rose-500/30 bg-rose-950/20">
           <h2 className="text-sm font-semibold text-rose-200">Simulation thất bại</h2>
           {meeting.error_message && (
             <p className="mt-2 text-sm text-rose-100">{meeting.error_message}</p>
@@ -94,7 +94,7 @@ export function MeetingOverviewTab() {
         </div>
       )}
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+      <section className="card-padded bg-slate-900/40">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
           Thông tin meeting
         </h2>

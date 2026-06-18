@@ -16,20 +16,23 @@ export function MeetingHeader({
   showDelete = true,
 }: MeetingHeaderProps) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div>
-        <Link to="/" className="text-sm text-slate-500 hover:text-slate-300">
+    <div className="mb-5 flex flex-col gap-4 sm:mb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
+        <Link
+          to="/"
+          className="inline-flex min-h-9 items-center text-sm text-slate-500 hover:text-slate-300"
+        >
           ← All meetings
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-white">{meeting.topic}</h1>
-        <p className="mt-1 text-sm text-slate-400">
+        <h1 className="page-title mt-2 break-words">{meeting.topic}</h1>
+        <p className="page-subtitle">
           Created {formatDate(meeting.created_at)}
           {meeting.scheduled_at && <> · Scheduled {formatDate(meeting.scheduled_at)}</>}
         </p>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
         <span
-          className={`rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset ${statusClasses(meeting.status)}`}
+          className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 ring-inset ${statusClasses(meeting.status)}`}
         >
           {statusLabel(meeting.status)}
         </span>
@@ -38,7 +41,7 @@ export function MeetingHeader({
             type="button"
             onClick={onDelete}
             disabled={deleting}
-            className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+            className="btn-danger min-h-9 px-3 py-2 text-xs sm:min-h-10 sm:text-sm"
           >
             {deleting ? 'Deleting…' : 'Delete'}
           </button>

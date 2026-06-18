@@ -43,45 +43,47 @@ export function PersonasPage() {
 
   return (
     <AdminLayout>
-      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">Personas</h1>
-          <p className="mt-1 text-slate-400">Manage debate participants and their system prompts.</p>
+          <h1 className="page-title">Personas</h1>
+          <p className="page-subtitle">Manage debate participants and their system prompts.</p>
         </div>
-        <Link
-          to="/admin/personas/new"
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-        >
+        <Link to="/admin/personas/new" className="btn-primary w-full sm:w-auto">
           Add persona
         </Link>
       </div>
 
-      <label className="mb-6 flex items-center gap-2 text-sm text-slate-400">
+      <label className="mb-6 flex min-h-10 items-center gap-2 text-sm text-slate-400">
         <input
           type="checkbox"
           checked={showInactive}
           onChange={(e) => setShowInactive(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-600"
         />
         Show inactive personas
       </label>
 
       {loading && <p className="text-slate-400">Loading…</p>}
-      {error && <p className="mb-4 text-rose-400">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          {error}
+        </p>
+      )}
 
       {!loading && personas.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-700 p-10 text-center text-slate-400">
+        <div className="card-padded border-dashed p-8 text-center text-slate-400 sm:p-10">
           No personas found.
         </div>
       )}
 
-      <div className="grid gap-4">
+      <div className="grid gap-3 sm:gap-4">
         {personas.map((persona) => (
           <div
             key={persona.role}
-            className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-900/50 p-5"
+            className="card-padded flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
-              <div className="flex items-center gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <h2 className="font-medium text-white">{persona.role}</h2>
                 {!persona.is_active && (
                   <span className="rounded-full bg-slate-700 px-2 py-0.5 text-xs text-slate-300">
@@ -96,7 +98,7 @@ export function PersonasPage() {
             <div className="flex gap-2">
               <Link
                 to={`/admin/personas/${encodeURIComponent(persona.role)}`}
-                className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+                className="btn-secondary min-h-9 px-3 py-2 text-sm"
               >
                 Edit
               </Link>
@@ -105,7 +107,7 @@ export function PersonasPage() {
                   type="button"
                   onClick={() => handleDelete(persona.role)}
                   disabled={deleting === persona.role}
-                  className="rounded-lg border border-rose-500/40 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+                  className="btn-danger min-h-9 px-3 py-2 text-sm"
                 >
                   {deleting === persona.role ? 'Deactivating…' : 'Deactivate'}
                 </button>

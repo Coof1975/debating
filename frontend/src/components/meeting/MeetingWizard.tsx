@@ -16,8 +16,7 @@ type WizardData = {
   modelId: string
 }
 
-const inputClass =
-  'w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white'
+const inputClass = 'input-field'
 
 function defaultDate(): string {
   return new Date().toISOString().slice(0, 10)
@@ -170,16 +169,16 @@ export function MeetingWizard() {
 
   return (
     <div>
-      <div className="mb-8 flex items-center gap-2">
+      <div className="mb-6 flex flex-col gap-2 sm:mb-8 sm:flex-row sm:items-center sm:gap-2">
         {steps.map((label, index) => {
           const n = index + 1
           const active = step === n
           const done = step > n
           return (
             <div key={label} className="flex items-center gap-2">
-              {index > 0 && <div className="h-px w-8 bg-slate-700" />}
+              {index > 0 && <div className="hidden h-px w-8 bg-slate-700 sm:block" />}
               <div
-                className={`flex items-center gap-2 rounded-full px-3 py-1 text-sm ${
+                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm sm:w-auto sm:rounded-full sm:py-1 ${
                   active
                     ? 'bg-indigo-600 text-white'
                     : done
@@ -187,8 +186,10 @@ export function MeetingWizard() {
                       : 'bg-slate-800 text-slate-500'
                 }`}
               >
-                <span>{n}</span>
-                <span>{label}</span>
+                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/20 text-xs font-semibold">
+                  {n}
+                </span>
+                <span className="font-medium">{label}</span>
               </div>
             </div>
           )
@@ -306,29 +307,29 @@ export function MeetingWizard() {
 
       {step === 3 && (
         <section className="space-y-6">
-          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 text-sm text-slate-300">
-            <dl className="space-y-2">
-              <div className="flex gap-2">
-                <dt className="w-32 shrink-0 text-slate-500">Chủ đề</dt>
+          <div className="card-padded bg-slate-900/50 text-sm text-slate-300">
+            <dl className="space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                <dt className="shrink-0 text-slate-500 sm:w-32">Chủ đề</dt>
                 <dd className="text-white">{data.topic}</dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="w-32 shrink-0 text-slate-500">Lịch</dt>
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                <dt className="shrink-0 text-slate-500 sm:w-32">Lịch</dt>
                 <dd>
                   {data.scheduledDate} {data.scheduledTime}
                 </dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="w-32 shrink-0 text-slate-500">Chủ trì</dt>
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                <dt className="shrink-0 text-slate-500 sm:w-32">Chủ trì</dt>
                 <dd>{data.hostId}</dd>
               </div>
-              <div className="flex gap-2">
-                <dt className="w-32 shrink-0 text-slate-500">Tham gia</dt>
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                <dt className="shrink-0 text-slate-500 sm:w-32">Tham gia</dt>
                 <dd>{data.selected.join(', ')}</dd>
               </div>
               {data.notes && (
-                <div className="flex gap-2">
-                  <dt className="w-32 shrink-0 text-slate-500">Ghi chú</dt>
+                <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                  <dt className="shrink-0 text-slate-500 sm:w-32">Ghi chú</dt>
                   <dd>{data.notes}</dd>
                 </div>
               )}
@@ -393,12 +394,12 @@ export function MeetingWizard() {
 
       {error && <p className="mt-6 text-sm text-rose-400">{error}</p>}
 
-      <div className="mt-8 flex gap-3">
+      <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:gap-3">
         {step > 1 && (
           <button
             type="button"
             onClick={goBack}
-            className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+            className="btn-secondary"
           >
             Quay lại
           </button>
@@ -407,7 +408,7 @@ export function MeetingWizard() {
           <button
             type="button"
             onClick={goNext}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            className="btn-primary"
           >
             Tiếp tục
           </button>
@@ -416,7 +417,7 @@ export function MeetingWizard() {
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            className="btn-primary"
           >
             {submitting ? 'Đang tạo…' : 'Tạo meeting'}
           </button>

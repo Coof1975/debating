@@ -16,7 +16,7 @@ export function RunSimulationButton({
       type="button"
       onClick={onClick}
       disabled={loading}
-      className={`rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50 ${className}`}
+      className={`btn-primary w-full sm:w-auto ${className}`}
     >
       {loading ? 'Đang khởi chạy…' : label}
     </button>

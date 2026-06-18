@@ -22,14 +22,14 @@ export function TranscriptView({
 
   if (turns.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-slate-700 text-slate-400">
+      <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400 sm:h-64">
         {isLive ? 'Waiting for first turn…' : 'No conversation yet.'}
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {turns.map((turn) => {
         const hidden = hiddenByKey.get(hiddenTurnKey(turn))
         const monologue = hidden?.monologue
@@ -38,9 +38,9 @@ export function TranscriptView({
         return (
           <article
             key={`${turn.turn_index}-${turn.speaker_id}`}
-            className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+            className="card-padded bg-slate-900/60"
           >
-            <div className="mb-2 flex items-center gap-3">
+            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span
                 className={`rounded-md px-2 py-0.5 text-xs font-bold text-white ${roleColor(turn.speaker_id)}`}
               >
@@ -53,8 +53,8 @@ export function TranscriptView({
             </div>
 
             {showInternalReasoning && monologue && (
-              <div className="mb-3 rounded-lg border border-slate-800/80 bg-slate-950/50 px-3 py-2">
-                <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
+              <div className="mb-3 rounded-xl border border-slate-800/80 bg-slate-950/50 px-3 py-2.5">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
                   <span>Internal reasoning</span>
                   {stanceLabel && (
                     <span className="normal-case tracking-normal text-slate-600">{stanceLabel}</span>

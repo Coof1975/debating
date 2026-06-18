@@ -42,29 +42,33 @@ export function HomePage() {
 
   return (
     <WorkspaceLayout>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-white">Meeting history</h1>
-        <p className="mt-1 text-slate-400">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="page-title">Meeting history</h1>
+        <p className="page-subtitle">
           View past simulations or start a new multi-persona debate.
         </p>
       </div>
 
       {loading && <p className="text-slate-400">Loading…</p>}
-      {error && <p className="text-rose-400">{error}</p>}
+      {error && (
+        <p className="mb-4 rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
+          {error}
+        </p>
+      )}
 
       {!loading && meetings.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-700 p-10 text-center">
+        <div className="card-padded border-dashed p-8 text-center sm:p-10">
           <p className="text-slate-400">No meetings yet.</p>
           <Link
             to="/meetings/new"
-            className="mt-4 inline-block text-indigo-400 hover:text-indigo-300"
+            className="btn-primary mt-4 inline-flex"
           >
-            Create your first meeting →
+            Create your first meeting
           </Link>
         </div>
       )}
 
-      <div className="grid gap-4">
+      <div className="grid gap-3 sm:gap-4">
         {meetings.map((meeting) => (
           <MeetingCard
             key={meeting.id}

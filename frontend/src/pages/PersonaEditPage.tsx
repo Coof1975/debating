@@ -4,8 +4,7 @@ import { api } from '../api/client'
 import { AdminLayout } from '../components/AdminLayout'
 import type { NegotiationProfile, PersonaSection } from '../types'
 
-const inputClass =
-  'w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white'
+const inputClass = 'input-field'
 const labelClass = 'block text-sm font-medium text-slate-300'
 
 const DEFAULT_NEGOTIATION: NegotiationProfile = {
@@ -172,10 +171,13 @@ export function PersonaEditPage() {
 
   return (
     <AdminLayout>
-      <Link to="/admin/personas" className="text-sm text-slate-500 hover:text-slate-300">
+      <Link
+        to="/admin/personas"
+        className="inline-flex min-h-9 items-center text-sm text-slate-500 hover:text-slate-300"
+      >
         ← All personas
       </Link>
-      <h1 className="mt-2 text-2xl font-semibold text-white">
+      <h1 className="page-title mt-2">
         {isNew ? 'New persona' : `Edit ${role}`}
       </h1>
 
@@ -351,15 +353,15 @@ export function PersonaEditPage() {
           </section>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+            className="btn-primary"
           >
             {saving ? 'Saving…' : isNew ? 'Create persona' : 'Save changes'}
           </button>
-          <Link to="/admin/personas" className="px-3 py-2.5 text-sm text-slate-400 hover:text-white">
+          <Link to="/admin/personas" className="btn-secondary text-center">
             Cancel
           </Link>
         </div>

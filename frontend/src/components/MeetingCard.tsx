@@ -10,16 +10,16 @@ type MeetingCardProps = {
 
 export function MeetingCard({ meeting, onDelete, deleting }: MeetingCardProps) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-5 transition hover:border-slate-600 hover:bg-slate-900">
-      <div className="flex items-start justify-between gap-4">
+    <article className="card-padded transition hover:border-slate-600 hover:bg-slate-900 active:scale-[0.995]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <Link to={`/meetings/${meeting.id}`} className="min-w-0 flex-1">
-          <h2 className="font-medium text-white">{meeting.topic}</h2>
-          <p className="mt-1 text-xs text-slate-500">
+          <h2 className="font-medium leading-snug text-white">{meeting.topic}</h2>
+          <p className="mt-1.5 line-clamp-2 text-xs text-slate-500">
             {meeting.participant_ids.join(' · ')}
             {meeting.host_id && <> · Host {meeting.host_id}</>}
           </p>
         </Link>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex items-center justify-between gap-2 sm:shrink-0 sm:flex-col sm:items-end lg:flex-row lg:items-center">
           <span
             className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${statusClasses(meeting.status)}`}
           >
@@ -30,7 +30,7 @@ export function MeetingCard({ meeting, onDelete, deleting }: MeetingCardProps) {
               type="button"
               onClick={() => onDelete(meeting.id)}
               disabled={deleting}
-              className="rounded-lg border border-rose-500/40 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"
+              className="btn-danger min-h-9 px-2.5 py-1.5 text-xs"
             >
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
@@ -38,13 +38,13 @@ export function MeetingCard({ meeting, onDelete, deleting }: MeetingCardProps) {
         </div>
       </div>
       <Link to={`/meetings/${meeting.id}`} className="mt-4 block">
-        <div className="flex gap-4 text-xs text-slate-400">
+        <div className="flex flex-col gap-1 text-xs text-slate-400 sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">
           <span>Created {formatDate(meeting.created_at)}</span>
           {meeting.scheduled_at && <span>Scheduled {formatDate(meeting.scheduled_at)}</span>}
           {meeting.completed_at && <span>Completed {formatDate(meeting.completed_at)}</span>}
           {meeting.termination_reason && <span>Ended: {meeting.termination_reason}</span>}
         </div>
       </Link>
-    </div>
+    </article>
   )
 }

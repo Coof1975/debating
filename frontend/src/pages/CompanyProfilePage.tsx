@@ -4,8 +4,7 @@ import { AdminLayout } from '../components/AdminLayout'
 import { formatDate } from '../lib/utils'
 import type { CompanySection } from '../types'
 
-const inputClass =
-  'w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-white'
+const inputClass = 'input-field'
 const labelClass = 'block text-sm font-medium text-slate-300'
 
 function emptySection(): CompanySection {
@@ -112,15 +111,15 @@ export function CompanyProfilePage() {
 
   return (
     <AdminLayout>
-      <h1 className="text-2xl font-semibold text-white">Company profile</h1>
-      <p className="mt-1 text-slate-400">
+      <h1 className="page-title">Company profile</h1>
+      <p className="page-subtitle">
         Edit the business context used to generate persona prompts for meetings.
       </p>
       {updatedAt && (
         <p className="mt-2 text-xs text-slate-500">Last updated {formatDate(updatedAt)}</p>
       )}
 
-      <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-amber-100">
+      <div className="card-padded mt-6 border-amber-500/30 bg-amber-950/20 text-sm text-amber-100">
         <p>
           Thay đổi company profile sẽ tự rebuild prompt khi lưu. Bạn cũng có thể rebuild thủ công
           cho tất cả persona.
@@ -129,7 +128,7 @@ export function CompanyProfilePage() {
           type="button"
           onClick={handleRebuildPrompts}
           disabled={rebuilding}
-          className="mt-3 rounded-lg border border-amber-500/40 px-4 py-2 text-sm text-amber-100 hover:bg-amber-950/40 disabled:opacity-50"
+          className="btn-secondary mt-3 border-amber-500/40 text-amber-100 hover:bg-amber-950/40"
         >
           {rebuilding ? 'Rebuilding…' : 'Rebuild all persona prompts'}
         </button>
@@ -234,7 +233,7 @@ export function CompanyProfilePage() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-lg bg-indigo-600 px-5 py-2.5 font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="btn-primary w-full sm:w-auto"
         >
           {saving ? 'Saving…' : 'Save company profile'}
         </button>

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/debating"
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origin_regex: str | None = None
     default_max_turns: int = 25
     api_prefix: str = "/api"
     use_mock_llm: bool = False

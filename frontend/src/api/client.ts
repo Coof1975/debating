@@ -19,7 +19,9 @@ import type {
   UpdateMeetingPayload,
 } from '../types'
 
-const API = '/api'
+/** Empty in dev (Vite proxies /api); set VITE_API_BASE_URL on Vercel to the Railway host. */
+const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
+const API = API_BASE ? `${API_BASE}/api` : '/api'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API}${path}`, {

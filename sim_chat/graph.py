@@ -91,6 +91,10 @@ def record_from_state(
                 turn.model_dump(mode="json")
                 for turn in final_state.get("hidden_turns", [])
             ],
+            "speaker_selections": [
+                selection.model_dump(mode="json")
+                for selection in final_state.get("speaker_selections", [])
+            ],
             "working_proposals": [
                 proposal.model_dump(mode="json")
                 for proposal in final_state.get("working_proposals", [])
@@ -149,6 +153,7 @@ def iter_meeting_events(
 
     prev_message_count = 0
     prev_hidden_count = 0
+    prev_selection_count = 0
     prev_verdict_key: tuple | None = None
     prev_proposals_key: tuple | None = None
     prev_facts_key: tuple | None = None
@@ -174,6 +179,15 @@ def iter_meeting_events(
                     "type": "monologue",
                     "data": hidden_turn.model_dump(),
                 }
+
+        speaker_selections = state.get("speaker_selections", [])
+        if len(speaker_selections) > prev_selection_count:
+            selection = speaker_selections[-1]
+            prev_selection_count = len(speaker_selections)
+            yield {
+                "type": "orchestrator",
+                "data": selection.model_dump(),
+            }
 
         messages = state.get("messages", [])
         if len(messages) > prev_message_count:

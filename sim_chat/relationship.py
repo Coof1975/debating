@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 from .config import MeetingConfig
-from .models import AstrologyProfile, RelationshipEdge, RelationshipMatrix
+from .models import AstrologyProfile, DialogueTurn, RelationshipEdge, RelationshipMatrix
 
 if TYPE_CHECKING:
     from debating.models import Persona
@@ -224,3 +224,211 @@ def filter_relationship_matrix(
         factions=factions,
         astrology=astrology,
     )
+
+
+_FRICTION_MARKERS = (
+    "sai",
+    "không chấp nhận",
+    "phản đối",
+    "nghi ngờ",
+    "đập bàn",
+    "vô lý",
+    "không đúng",
+    "cãi",
+    "ép",
+    "thủ công",
+    "đốt tiền",
+    "than vãn",
+)
+
+_MOTIVE_SUSPICION_MARKERS = (
+    "động cơ",
+    "cá nhân",
+    "lợi ích riêng",
+    "che giấu",
+    "qua mặt",
+    "bè phái",
+    "lá chắn",
+    "tuồn",
+    "xào nấu",
+    "mưu mẹo",
+)
+
+_ALLIANCE_MARKERS = (
+    "tin tưởng",
+    "kỳ vọng",
+    "đồng minh",
+    "hợp tác",
+    "ủng hộ",
+    "đồng ý",
+    "ủng hộ",
+    "cùng phe",
+    "hỗ trợ",
+    "tôn trọng",
+    "đúng rồi",
+    "hợp lý",
+)
+
+_SUPPORTIVE_TRANSCRIPT_MARKERS = (
+    "đồng ý",
+    "ủng hộ",
+    "hợp lý",
+    "đúng",
+    "tin",
+    "cảm ơn",
+    "hỗ trợ",
+)
+
+
+def _speaker_faction(matrix: RelationshipMatrix, persona_id: str) -> str | None:
+    for name, members in matrix.factions.items():
+        if persona_id in members:
+            return name
+    return None
+
+
+def _same_faction(matrix: RelationshipMatrix, source_id: str, target_id: str) -> bool:
+    faction = _speaker_faction(matrix, source_id)
+    return bool(faction and faction == _speaker_faction(matrix, target_id))
+
+
+def _stance_label(affinity: float) -> str:
+    if affinity > 0.35:
+        return "thân thiện / đồng minh"
+    if affinity > 0.15:
+        return "tương đối thuận"
+    if affinity < -0.35:
+        return "căm ghét / rất căng"
+    if affinity < -0.15:
+        return "khó chịu / nghi ngờ"
+    return "trung lập"
+
+
+def infer_session_mood(
+    matrix: RelationshipMatrix,
+    speaker_id: str,
+    *,
+    recent_messages: list[DialogueTurn] | None = None,
+    last_speaker: str = "",
+) -> list[str]:
+    """Heuristic session mood cues from astrology and recent transcript friction."""
+    cues: list[str] = []
+    astro = matrix.astrology.get(speaker_id)
+    if astro and astro.summary.strip():
+        cues.append(f"Tử vi/hạn năm: {astro.summary.strip()}")
+        if astro.mood_modifier > 0:
+            cues.append("Tâm trạng nền: dễ nóng, áp lực, có xu hướng liều hoặc cứng rắn hơn bình thường.")
+
+    if not recent_messages:
+        return cues
+
+    friction_hits = 0
+    targeted_at_speaker = 0
+    for turn in recent_messages[-6:]:
+        lowered = turn.content.lower()
+        if turn.speaker_id == last_speaker and last_speaker and last_speaker != speaker_id:
+            edge = matrix.edge(speaker_id, last_speaker)
+            if edge and edge.affinity < -0.1 and any(m in lowered for m in _FRICTION_MARKERS):
+                targeted_at_speaker += 1
+        if turn.speaker_id != speaker_id and any(m in lowered for m in _FRICTION_MARKERS):
+            friction_hits += 1
+
+    if targeted_at_speaker >= 1:
+        cues.append(
+            f"Vừa bị {last_speaker or 'đồng nghiệp'} chọc/gài — dễ phản ứng cứng hoặc khiêu khích lại."
+        )
+    elif friction_hits >= 2:
+        cues.append("Không khí họp đang căng — có thể muốn đẩy mạnh hoặc chọc thêm để lấy lại thế.")
+
+    if last_speaker and last_speaker != speaker_id and recent_messages:
+        edge = matrix.edge(speaker_id, last_speaker)
+        last_turn = recent_messages[-1]
+        if last_turn.speaker_id == last_speaker:
+            lowered = last_turn.content.lower()
+            if edge and edge.affinity > 0.15 and any(m in lowered for m in _SUPPORTIVE_TRANSCRIPT_MARKERS):
+                cues.append(
+                    f"{last_speaker} vừa nói đúng hướng phe bạn — có thể muốn ủng hộ hoặc bọc lót thêm."
+                )
+            elif _same_faction(matrix, speaker_id, last_speaker) and edge and edge.affinity >= 0:
+                cues.append(
+                    f"Cùng phe với {last_speaker} — cân nhắc bảo vệ đồng minh trước áp lực từ phe đối lập."
+                )
+    return cues
+
+
+def format_relationships_for_reasoning(
+    matrix: RelationshipMatrix,
+    *,
+    speaker_id: str,
+    last_speaker: str = "",
+    recent_messages: list[DialogueTurn] | None = None,
+) -> str:
+    """Rich relationship + mood block injected only in the internal reasoning step."""
+    lines: list[str] = [
+        "[QUAN HỆ & TÂM TRẠNG — dùng cho suy nghĩ nội bộ]",
+        "Trước absorb/compromise, hãy đọc kỹ quan hệ cá nhân — không chỉ luận điểm nghiệp vụ.",
+    ]
+
+    mood_cues = infer_session_mood(
+        matrix,
+        speaker_id,
+        recent_messages=recent_messages,
+        last_speaker=last_speaker,
+    )
+    if mood_cues:
+        lines.append("Tâm trạng phiên họp hôm nay:")
+        for cue in mood_cues:
+            lines.append(f"- {cue}")
+
+    if last_speaker and last_speaker != speaker_id:
+        edge = matrix.edge(speaker_id, last_speaker)
+        if edge:
+            lines.append(f"\nNgười vừa nói ({last_speaker}) — góc nhìn quan hệ của bạn:")
+            lines.append(f"- Cảm xúc: {_stance_label(edge.affinity)} (affinity={edge.affinity:.2f})")
+            lines.append(f"- Mức xung đột tiềm năng: {edge.conflict_weight:.2f}")
+            if edge.faction:
+                lines.append(f"- Phe: {edge.faction}")
+            if edge.notes.strip():
+                lines.append(f"- Bias cố định: {edge.notes.strip()}")
+            note_lower = edge.notes.lower()
+            if any(m in note_lower for m in _MOTIVE_SUSPICION_MARKERS):
+                lines.append("- Gợi ý: nghi ngờ động cơ cá nhân / lợi ích riêng của họ trong lượt này.")
+            elif edge.affinity > 0.15 or any(m in note_lower for m in _ALLIANCE_MARKERS):
+                lines.append(
+                    "- Gợi ý: tin tưởng / tôn trọng — có thể ủng hộ, bọc lót, hoặc nhún nhường hơn với họ."
+                )
+            elif _same_faction(matrix, speaker_id, last_speaker):
+                lines.append("- Gợi ý: cùng phe — ưu tiên bảo vệ đồng minh khi bị phe đối lập tấn công.")
+            elif edge.affinity < -0.15:
+                lines.append("- Gợi ý: dễ đọc lời họ nói theo hướng thiên vị / muốn bắt bẻ.")
+
+    allies: list[str] = []
+    tense: list[str] = []
+    for target_id, edge in sorted(matrix.edges.get(speaker_id, {}).items()):
+        if target_id == last_speaker:
+            continue
+        snippet = edge.notes[:120].strip() or _stance_label(edge.affinity)
+        if edge.affinity >= 0.2 or any(m in edge.notes.lower() for m in _ALLIANCE_MARKERS):
+            allies.append(f"- {target_id}: {_stance_label(edge.affinity)} — {snippet}")
+        elif edge.affinity <= -0.15 or edge.conflict_weight >= 0.65:
+            tense.append(f"- {target_id}: {_stance_label(edge.affinity)} — {snippet}")
+    if allies:
+        lines.append("\nĐồng minh / quan hệ tích cực (có thể muốn bảo vệ):")
+        lines.extend(allies[:4])
+    if tense:
+        lines.append("\nQuan hệ căng với các thành viên khác:")
+        lines.extend(tense[:4])
+
+    speaker_faction = _speaker_faction(matrix, speaker_id)
+    if speaker_faction and matrix.factions.get(speaker_faction):
+        mates = [pid for pid in matrix.factions[speaker_faction] if pid != speaker_id]
+        if mates:
+            lines.append(f"\nPhe của bạn ({speaker_faction}): {', '.join(mates)}")
+
+    lines.append(
+        "\nTrong JSON reasoning, trường relationship_lens (string) gồm CẢ hai chiều:"
+        " (1) tiêu cực — ghét, nghi ngờ, bực, khiêu khích; "
+        "(2) tích cực — tin, tôn trọng, thích, bảo vệ phe/đồng minh, muốn ủng hộ người vừa nói nếu họ thuộc phe bạn. "
+        "KHÔNG lộ ra ngoài monologue công khai."
+    )
+    return "\n".join(lines)

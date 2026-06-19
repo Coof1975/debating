@@ -18,29 +18,37 @@ from .models import (
     SharedFact,
     WorkingProposal,
     FactAcceptance,
+    DialogueTurn,
+    RelationshipMatrix,
 )
 from .facts import format_shared_facts_for_reasoning
 from .proposals import format_proposals_for_context
+from .relationship import format_relationships_for_reasoning
 
 REASONING_SYSTEM_SUFFIX = """
 
 ## CHẾ ĐỘ SUY NGHĨ NỘI BỘ (INTERNAL REASONING)
 Bạn đang ở bước suy nghĩ ẩn — output KHÔNG hiển thị trực tiếp cho người dùng.
 
-Trước khi phát biểu công khai, thực hiện 3 bước và trả về JSON hợp lệ (không markdown):
-1. **absorb** (string): Phân tích ý vừa nghe — điểm hợp lý, điểm xung đột, có xâm phạm lợi ích bộ phận?
+Trước khi phát biểu công khai, thực hiện các bước và trả về JSON hợp lệ (không markdown):
+0. **relationship_lens** (string): Góc nhìn quan hệ cá nhân — cả hai chiều:
+   - Tiêu cực: ghét, nghi ngờ động cơ, muốn bắt bẻ, khiêu khích, bực vì bị chọc...
+   - Tích cực: tin tưởng, tôn trọng, thích, đồng cảm, muốn bảo vệ phe/đồng minh, nương theo ý người mình quý...
+   Ghi rõ với ai (đặc biệt người vừa nói) và tâm trạng hôm nay. Dựa ma trận quan hệ + phe + biên bản gần nhất.
+1. **absorb** (string): Phân tích ý vừa nghe — điểm hợp lý, điểm xung đột, có xâm phạm lợi ích bộ phận? Lọc qua relationship_lens (VD: nếu ghét B thì vẫn tìm điểm hợp lý nhưng không nuốt trọn).
 2. **compromise_space** (string): Nếu phủ quyết hoàn toàn → cuộc họp bế tắc. Có phương án dung hòa giữ đủ lợi ích bộ phận?
 3. **stance_shift** (float): -1.0 đến 1.0 — mức nhún nhường so với lập trường cứng (0=giữ nguyên, dương=linh hoạt hơn).
 
 Mục tiêu tối thượng: cuộc họp phải ra kết quả cho Sếp (CEO). Bế tắc vô nghĩa sẽ bị đánh giá thấp.
 Tuyệt đối không phủ nhận sạch — hãy tìm vùng giao thoa ngay cả khi bảo vệ lợi ích bộ phận.
+Quan hệ cá nhân được phép ảnh hưởng giọng điệu và mức cứng nhưng không được phá vỡ vai trò chuyên môn.
 Áp dụng HỒ SƠ ĐÀM PHÁN trong system prompt (chỉ số thỏa hiệp, % lợi ích tối thiểu).
 """
 
 REASONING_USER_SUFFIX = """
 [INTERNAL REASONING]
 Trả lời CHỈ bằng JSON hợp lệ với các trường:
-- absorb, compromise_space, stance_shift
+- relationship_lens, absorb, compromise_space, stance_shift
 - proposal_scores: [{"id": "<proposal_id>", "score": 0.0-1.0, "concerns": "..."}] — chấm từng đề xuất active
 - new_proposal: null HOẶC {"title": "...", "description": "...", "parent_id": "<id>|null"} nếu có phương án dung hòa mới
 - fact_acceptances: [{"fact_id": "<id>", "accepted": true|false}] — đánh giá số liệu đồng nghiệp (nếu có)
@@ -51,6 +59,9 @@ Không thêm markdown hay giải thích ngoài JSON.
 SPEECH_INSTRUCTIONS = """
 Dựa trên suy nghĩ nội bộ sau, viết 2–6 câu phát biểu công khai trong cuộc họp:
 
+[RELATIONSHIP LENS]
+{relationship_lens}
+
 [ABSORB]
 {absorb}
 
@@ -58,6 +69,7 @@ Dựa trên suy nghĩ nội bộ sau, viết 2–6 câu phát biểu công khai 
 {compromise_space}
 
 Quy tắc phát biểu:
+- Giọng điệu phản ánh quan hệ cá nhân (thân/tôn trọng/bảo vệ phe hoặc khinh/nghi ngờ) nhưng vẫn lịch sự trong họp nội bộ
 - "Yes, and..." — thừa nhận phần hợp lý trước khi bổ sung hoặc phản biện
 - Không lặp lại monologue, không meta ("tôi đã suy nghĩ...", "theo phân tích nội bộ...")
 - Giữ giọng điệu và tính cách nhân vật
@@ -155,6 +167,7 @@ def parse_reasoning_result(raw: str) -> ReasoningResult | None:
             absorb=str(absorb).strip(),
             compromise_space=str(compromise_space).strip(),
             stance_shift=stance_shift,
+            relationship_lens=str(payload.get("relationship_lens", "")).strip(),
         ),
         proposal_scores=proposal_scores,
         new_proposal=new_proposal,
@@ -171,9 +184,26 @@ def build_reasoning_user_message(
     participant_ids: list[str] | None = None,
     shared_facts: list[SharedFact] | None = None,
     speaker_id: str | None = None,
+    relationship_matrix: RelationshipMatrix | None = None,
+    last_speaker: str = "",
+    recent_messages: list[DialogueTurn] | None = None,
+    enable_relationship_reasoning: bool = True,
 ) -> str:
     suffix = REASONING_USER_SUFFIX
     blocks: list[str] = [meeting_context.rstrip()]
+
+    if (
+        enable_relationship_reasoning
+        and relationship_matrix is not None
+        and speaker_id is not None
+    ):
+        rel_block = format_relationships_for_reasoning(
+            relationship_matrix,
+            speaker_id=speaker_id,
+            last_speaker=last_speaker,
+            recent_messages=recent_messages,
+        )
+        blocks.append(rel_block)
 
     if shared_facts is not None and speaker_id is not None:
         facts_block = format_shared_facts_for_reasoning(shared_facts, speaker_id=speaker_id)
@@ -198,7 +228,9 @@ def build_reasoning_user_message(
 
 
 def build_speech_user_message(meeting_context: str, monologue: InternalMonologue) -> str:
+    relationship_lens = monologue.relationship_lens.strip() or "(không ghi nhận bias quan hệ đặc biệt)"
     speech_block = SPEECH_INSTRUCTIONS.format(
+        relationship_lens=relationship_lens,
         absorb=monologue.absorb,
         compromise_space=monologue.compromise_space,
     )
@@ -231,6 +263,9 @@ def generate_persona_speech(
     participant_ids: list[str] | None = None,
     shared_facts: list[SharedFact] | None = None,
     speaker_id: str | None = None,
+    relationship_matrix: RelationshipMatrix | None = None,
+    last_speaker: str = "",
+    recent_messages: list[DialogueTurn] | None = None,
 ) -> tuple[str, ReasoningResult | None]:
     """Generate public speech, optionally via hidden internal monologue."""
     if not config.enable_internal_monologue:
@@ -253,6 +288,10 @@ def generate_persona_speech(
         participant_ids=participant_ids,
         shared_facts=shared_facts if config.enable_shared_facts else None,
         speaker_id=speaker_id,
+        relationship_matrix=relationship_matrix,
+        last_speaker=last_speaker,
+        recent_messages=recent_messages,
+        enable_relationship_reasoning=config.enable_relationship_reasoning,
     )
     raw_reasoning = llm.generate(
         reasoning_system,

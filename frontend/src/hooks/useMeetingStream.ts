@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { parseHiddenTurns } from '../lib/hiddenTurns'
-import type { DialogueTurn, HiddenTurn, SharedFact, WorkingProposal } from '../types'
+import { parseSpeakerSelections } from '../lib/speakerSelections'
+import type { DialogueTurn, HiddenTurn, SharedFact, SpeakerSelection, WorkingProposal } from '../types'
 import { streamMeeting } from '../api/client'
 
 type StreamState = {
   turns: DialogueTurn[]
   hiddenTurns: HiddenTurn[]
+  speakerSelections: SpeakerSelection[]
   workingProposals: WorkingProposal[]
   sharedFacts: SharedFact[]
   insightReport: string
@@ -40,10 +42,24 @@ function parseHiddenTurnsFromRecord(data: Record<string, unknown>): HiddenTurn[]
   return parseHiddenTurns((metadata as Record<string, unknown>).hidden_turns)
 }
 
+function parseSpeakerSelectionEvent(data: Record<string, unknown>): SpeakerSelection | null {
+  const parsed = parseSpeakerSelections([data])
+  return parsed[0] ?? null
+}
+
+function parseSpeakerSelectionsFromRecord(data: Record<string, unknown>): SpeakerSelection[] {
+  const record = data.record
+  if (!record || typeof record !== 'object') return []
+  const metadata = (record as Record<string, unknown>).metadata
+  if (!metadata || typeof metadata !== 'object') return []
+  return parseSpeakerSelections((metadata as Record<string, unknown>).speaker_selections)
+}
+
 export function useMeetingStream(meetingId: string | null, meetingStatus: string | undefined) {
   const [state, setState] = useState<StreamState>({
     turns: [],
     hiddenTurns: [],
+    speakerSelections: [],
     workingProposals: [],
     sharedFacts: [],
     insightReport: '',
@@ -58,6 +74,7 @@ export function useMeetingStream(meetingId: string | null, meetingStatus: string
     setState({
       turns: [],
       hiddenTurns: [],
+      speakerSelections: [],
       workingProposals: [],
       sharedFacts: [],
       insightReport: '',
@@ -92,6 +109,13 @@ export function useMeetingStream(meetingId: string | null, meetingStatus: string
             ...prev,
             hiddenTurns: [...prev.hiddenTurns, hidden],
           }))
+        } else if (event.type === 'orchestrator') {
+          const selection = parseSpeakerSelectionEvent(event.data)
+          if (!selection) return
+          setState((prev) => ({
+            ...prev,
+            speakerSelections: [...prev.speakerSelections, selection],
+          }))
         } else if (event.type === 'proposal_update') {
           setState((prev) => ({
             ...prev,
@@ -109,12 +133,15 @@ export function useMeetingStream(meetingId: string | null, meetingStatus: string
           }))
         } else if (event.type === 'completed') {
           const hiddenTurns = parseHiddenTurnsFromRecord(event.data)
+          const speakerSelections = parseSpeakerSelectionsFromRecord(event.data)
           setState((prev) => ({
             ...prev,
             isLive: false,
             terminationReason: (event.data.termination_reason as string | null) ?? null,
             statusText: 'Completed',
             hiddenTurns: hiddenTurns.length > 0 ? hiddenTurns : prev.hiddenTurns,
+            speakerSelections:
+              speakerSelections.length > 0 ? speakerSelections : prev.speakerSelections,
           }))
         } else if (event.type === 'status') {
           const turnIndex = event.data.turn_index as number

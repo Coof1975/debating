@@ -6,6 +6,7 @@ import { MeetingTabNav } from '../../components/meeting/MeetingTabNav'
 import { WorkspaceLayout } from '../../components/WorkspaceLayout'
 import { useMeetingStream } from '../../hooks/useMeetingStream'
 import { parseHiddenTurns } from '../../lib/hiddenTurns'
+import { parseSpeakerSelections } from '../../lib/speakerSelections'
 import type { LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
 import { MeetingHubProvider, type MeetingHubContextValue } from './MeetingHubContext'
 
@@ -23,6 +24,7 @@ export function MeetingHubPage() {
   const [deleting, setDeleting] = useState(false)
   const [showRerun, setShowRerun] = useState(false)
   const [showInternalReasoning, setShowInternalReasoning] = useState(true)
+  const [showOrchestratorDecisions, setShowOrchestratorDecisions] = useState(false)
   const [providerId, setProviderId] = useState('openai')
   const [modelId, setModelId] = useState('gpt-4o-mini')
 
@@ -69,6 +71,9 @@ export function MeetingHubPage() {
   const hiddenTurns = isStreaming
     ? stream.hiddenTurns
     : parseHiddenTurns(meeting?.record?.metadata?.hidden_turns)
+  const speakerSelections = isStreaming
+    ? stream.speakerSelections
+    : parseSpeakerSelections(meeting?.record?.metadata?.speaker_selections)
   const workingProposals: WorkingProposal[] = isStreaming
     ? stream.workingProposals
     : ((meeting?.record?.metadata?.working_proposals as WorkingProposal[] | undefined) ?? [])
@@ -173,6 +178,9 @@ export function MeetingHubPage() {
     hiddenTurns,
     showInternalReasoning,
     setShowInternalReasoning,
+    showOrchestratorDecisions,
+    setShowOrchestratorDecisions,
+    speakerSelections,
     workingProposals,
     sharedFacts,
     insight,

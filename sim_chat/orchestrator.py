@@ -7,7 +7,7 @@ import re
 from collections import Counter
 
 from .llm import LLMProvider
-from .models import DialogueTurn, MeetingState, RelationshipMatrix
+from .models import DialogueTurn, MeetingState, RelationshipMatrix, SpeakerSelection, SpeakerSelectionMethod
 from .transcript import format_transcript_for_context
 from .relationship import ROLE_ALIASES
 
@@ -309,7 +309,54 @@ def _format_transcript_from_state(state: MeetingState) -> str:
     )
 
 
-def _parse_orchestrator_response(raw: str, participant_ids: list[str]) -> str | None:
+def _next_turn_index(state: MeetingState) -> int:
+    return state["turn_index"] + 1
+
+
+def _build_selection(
+    state: MeetingState,
+    *,
+    next_speaker: str,
+    reason: str,
+    method: SpeakerSelectionMethod,
+) -> SpeakerSelection:
+    return SpeakerSelection(
+        next_speaker=next_speaker,
+        reason=reason,
+        method=method,
+        turn_index=_next_turn_index(state),
+    )
+
+
+def _format_conflict_reason(
+    state: MeetingState,
+    role: str,
+    score: float,
+    *,
+    runner_up_score: float | None = None,
+) -> str:
+    last_speaker = state.get("last_speaker") or ""
+    name = state["persona_names"].get(role, role)
+    last_name = state["persona_names"].get(last_speaker, last_speaker)
+    matrix = state["relationship_matrix"]
+    edge = matrix.edge(last_speaker, role)
+
+    parts = [f"Phản biện {last_name} — điểm xung đột {score:.2f}"]
+    if edge:
+        parts.append(
+            f"(affinity={edge.affinity:.2f}, xung đột={edge.conflict_weight:.2f})"
+        )
+    if runner_up_score is not None:
+        gap = score - runner_up_score
+        if gap >= CONFLICT_SHORTCUT_MIN_GAP:
+            parts.append(f"; khoảng cách với ứng viên thứ hai {gap:.2f}")
+    return f"{name} ({role}): {' '.join(parts)}"
+
+
+def _parse_orchestrator_response(
+    raw: str,
+    participant_ids: list[str],
+) -> tuple[str | None, str | None]:
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
@@ -317,29 +364,46 @@ def _parse_orchestrator_response(raw: str, participant_ids: list[str]) -> str | 
     try:
         payload = json.loads(cleaned)
         role = str(payload.get("next_speaker", "")).strip().upper()
+        reason = str(payload.get("reason", "")).strip()
         if role in participant_ids:
-            return role
+            return role, reason or None
     except (json.JSONDecodeError, TypeError, ValueError):
         pass
 
     for role_id in participant_ids:
         if re.search(rf"\b{re.escape(role_id)}\b", cleaned, re.IGNORECASE):
-            return role_id
-    return None
+            return role_id, None
+    return None, None
 
 
-def _select_next_speaker_by_conflict(state: MeetingState) -> str:
-    """Conflict-first fallback when LLM output is invalid or too weak."""
+def _selection_by_conflict(
+    state: MeetingState,
+    *,
+    method: SpeakerSelectionMethod,
+    reason_prefix: str = "",
+) -> SpeakerSelection:
     ranked = rank_candidates_by_conflict(state)
     if ranked:
-        return ranked[0][0]
+        role, score = ranked[0]
+        runner_up = ranked[1][1] if len(ranked) > 1 else None
+        reason = _format_conflict_reason(state, role, score, runner_up_score=runner_up)
+        if reason_prefix:
+            reason = f"{reason_prefix}{reason}"
+        return _build_selection(state, next_speaker=role, reason=reason, method=method)
+
     participant_ids = state["participant_ids"]
     last_speaker = state.get("last_speaker") or ""
     candidates = [pid for pid in participant_ids if pid != last_speaker]
-    return candidates[0] if candidates else participant_ids[0]
+    fallback = candidates[0] if candidates else participant_ids[0]
+    return _build_selection(
+        state,
+        next_speaker=fallback,
+        reason=f"{reason_prefix}Không có ứng viên xung đột hợp lệ; chọn {fallback}.",
+        method=method,
+    )
 
 
-def _maybe_conflict_shortcut(state: MeetingState) -> str | None:
+def _maybe_conflict_shortcut(state: MeetingState) -> SpeakerSelection | None:
     """Skip LLM when one antagonist clearly should respond."""
     ranked = rank_candidates_by_conflict(state)
     if len(ranked) < 1:
@@ -347,24 +411,63 @@ def _maybe_conflict_shortcut(state: MeetingState) -> str | None:
     top_role, top_score = ranked[0]
     second_score = ranked[1][1] if len(ranked) > 1 else 0.0
     if top_score >= CONFLICT_SHORTCUT_MIN_SCORE and (top_score - second_score) >= CONFLICT_SHORTCUT_MIN_GAP:
-        return top_role
+        reason = _format_conflict_reason(
+            state,
+            top_role,
+            top_score,
+            runner_up_score=second_score,
+        )
+        return _build_selection(
+            state,
+            next_speaker=top_role,
+            reason=f"Xung đột rõ ràng — {reason}",
+            method=SpeakerSelectionMethod.CONFLICT_SHORTCUT,
+        )
     return None
 
 
-def _apply_conflict_override(state: MeetingState, chosen: str) -> str:
+def _apply_conflict_override(
+    state: MeetingState,
+    chosen: str,
+    llm_reason: str | None,
+) -> SpeakerSelection:
     """Prefer top conflict scorer if LLM picked a much weaker antagonist."""
     ranked = rank_candidates_by_conflict(state)
     if not ranked:
-        return chosen
+        return _build_selection(
+            state,
+            next_speaker=chosen,
+            reason=llm_reason or f"LLM chọn {chosen}.",
+            method=SpeakerSelectionMethod.LLM,
+        )
+
     scores = dict(ranked)
     top_role, top_score = ranked[0]
     chosen_score = scores.get(chosen, 0.0)
     if top_role != chosen and (top_score - chosen_score) >= LLM_OVERRIDE_MIN_GAP:
-        return top_role
-    return chosen
+        runner_up = ranked[1][1] if len(ranked) > 1 else None
+        reason = _format_conflict_reason(state, top_role, top_score, runner_up_score=runner_up)
+        reason = (
+            f"Heuristic override: LLM chọn {chosen} (điểm {chosen_score:.2f}); "
+            f"ưu tiên {top_role} — {reason}"
+        )
+        return _build_selection(
+            state,
+            next_speaker=top_role,
+            reason=reason,
+            method=SpeakerSelectionMethod.CONFLICT_OVERRIDE,
+        )
+
+    reason = llm_reason or _format_conflict_reason(state, chosen, chosen_score)
+    return _build_selection(
+        state,
+        next_speaker=chosen,
+        reason=reason,
+        method=SpeakerSelectionMethod.LLM,
+    )
 
 
-def select_next_speaker_llm(state: MeetingState, llm: LLMProvider) -> str:
+def select_next_speaker_llm(state: MeetingState, llm: LLMProvider) -> SpeakerSelection:
     """Ask the LLM who should speak next, with conflict-weighted guardrails."""
     participant_ids = state["participant_ids"]
     last_speaker = state.get("last_speaker") or "—"
@@ -407,24 +510,44 @@ Biên bản gần nhất:
 Chọn next_speaker có xung đột/lợi ích mạnh nhất với last_speaker về luận điểm vừa nêu.
 """
     raw = llm.generate(ORCHESTRATOR_SYSTEM_PROMPT, user_message)
-    chosen = _parse_orchestrator_response(raw, participant_ids)
+    chosen, llm_reason = _parse_orchestrator_response(raw, participant_ids)
     if chosen and chosen != last_speaker:
-        return _apply_conflict_override(state, chosen)
+        return _apply_conflict_override(state, chosen, llm_reason)
     if chosen == last_speaker:
-        return _select_next_speaker_by_conflict(state)
-    return _select_next_speaker_by_conflict(state)
+        return _selection_by_conflict(
+            state,
+            method=SpeakerSelectionMethod.HEURISTIC_FALLBACK,
+            reason_prefix="LLM chọn lại last_speaker; fallback heuristic — ",
+        )
+    return _selection_by_conflict(
+        state,
+        method=SpeakerSelectionMethod.HEURISTIC_FALLBACK,
+        reason_prefix="LLM không trả về speaker hợp lệ; fallback heuristic — ",
+    )
 
 
-def select_next_speaker(state: MeetingState, llm: LLMProvider) -> str:
+def select_next_speaker(state: MeetingState, llm: LLMProvider) -> SpeakerSelection:
     """Pick the next persona: direct request first, else conflict-weighted orchestration."""
     participant_ids = state["participant_ids"]
 
     if not state["messages"]:
         opener = state["config"].opening_speaker
-        return opener if opener in participant_ids else participant_ids[0]
+        next_speaker = opener if opener in participant_ids else participant_ids[0]
+        return _build_selection(
+            state,
+            next_speaker=next_speaker,
+            reason="Mở đầu cuộc họp theo cấu hình (opening_speaker).",
+            method=SpeakerSelectionMethod.OPENING,
+        )
 
     requested = detect_requested_speaker(state)
     if requested and requested in participant_ids:
-        return requested
+        name = state["persona_names"].get(requested, requested)
+        return _build_selection(
+            state,
+            next_speaker=requested,
+            reason=f"{name} ({requested}) được chỉ định trực tiếp trong lượt trước.",
+            method=SpeakerSelectionMethod.DIRECT_REQUEST,
+        )
 
     return select_next_speaker_llm(state, llm)

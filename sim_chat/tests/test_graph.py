@@ -46,13 +46,16 @@ def test_graph_sse_events() -> None:
     assert types[0] == "started"
     assert types[-1] == "completed"
     assert "turn" in types
+    assert "orchestrator" in types
     assert "status" in types
 
     started_idx = types.index("started")
+    first_orchestrator_idx = types.index("orchestrator")
     first_turn_idx = types.index("turn")
     completed_idx = types.index("completed")
 
-    assert first_turn_idx > started_idx
+    assert first_orchestrator_idx > started_idx
+    assert first_turn_idx > first_orchestrator_idx
     assert completed_idx > first_turn_idx
 
     if "secretary" in types:
@@ -61,6 +64,8 @@ def test_graph_sse_events() -> None:
     completed = events[-1]["data"]
     assert completed["turn_count"] == 3
     assert completed["termination_reason"] == TerminationReason.MAX_ROUNDS.value
+    record = completed["record"]
+    assert len(record["metadata"]["speaker_selections"]) == 3
 
 
 def test_graph_sse_monologue_when_enabled() -> None:

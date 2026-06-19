@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { useMeetingStream } from '../../hooks/useMeetingStream'
-import type { DialogueTurn, HiddenTurn, LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
+import type { DialogueTurn, HiddenTurn, LlmProviderOption, Meeting, SharedFact, SpeakerSelection, WorkingProposal } from '../../types'
 
 export type MeetingHubContextValue = {
   meetingId: string
@@ -23,6 +23,9 @@ export type MeetingHubContextValue = {
   hiddenTurns: HiddenTurn[]
   showInternalReasoning: boolean
   setShowInternalReasoning: (show: boolean) => void
+  showOrchestratorDecisions: boolean
+  setShowOrchestratorDecisions: (show: boolean) => void
+  speakerSelections: SpeakerSelection[]
   workingProposals: WorkingProposal[]
   sharedFacts: SharedFact[]
   insight: string

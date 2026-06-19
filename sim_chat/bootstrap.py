@@ -191,6 +191,7 @@ def create_initial_state(
         transcript_summary="",
         summary_through_turn=0,
         hidden_turns=[],
+        speaker_selections=[],
         last_monologue={},
         negotiation_profiles=negotiation_profiles,
         working_proposals=[],

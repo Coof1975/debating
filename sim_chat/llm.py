@@ -125,6 +125,10 @@ class MockLLMProvider:
                     "để giữ lợi ích bộ phận."
                 ),
                 "stance_shift": 0.35,
+                "relationship_lens": (
+                    f"(dry-run) {name} vừa nghe đồng nghiệp nói — "
+                    "vừa nghi ngờ một phần nhưng cũng muốn ủng hộ phe mình nếu họ đúng hướng."
+                ),
                 "proposal_scores": [],
                 "new_proposal": None,
                 "fact_acceptances": [],

@@ -1,24 +1,39 @@
-import type { DialogueTurn, HiddenTurn } from '../types'
+import type { DialogueTurn, HiddenTurn, SpeakerSelection } from '../types'
 import {
   formatMonologue,
   formatStanceShift,
   hiddenTurnKey,
   indexHiddenTurns,
 } from '../lib/hiddenTurns'
+import { indexSpeakerSelections } from '../lib/speakerSelections'
 import { roleColor } from '../lib/utils'
+
+const METHOD_LABELS: Record<SpeakerSelection['method'], string> = {
+  opening: 'opening',
+  direct_request: 'direct request',
+  conflict_shortcut: 'conflict shortcut',
+  llm: 'llm',
+  conflict_override: 'conflict override',
+  heuristic_fallback: 'heuristic',
+}
 
 export function TranscriptView({
   turns,
   hiddenTurns = [],
+  speakerSelections = [],
   showInternalReasoning = true,
+  showOrchestratorDecisions = false,
   isLive,
 }: {
   turns: DialogueTurn[]
   hiddenTurns?: HiddenTurn[]
+  speakerSelections?: SpeakerSelection[]
   showInternalReasoning?: boolean
+  showOrchestratorDecisions?: boolean
   isLive?: boolean
 }) {
   const hiddenByKey = indexHiddenTurns(hiddenTurns)
+  const selectionByTurn = indexSpeakerSelections(speakerSelections)
 
   if (turns.length === 0) {
     return (
@@ -34,12 +49,28 @@ export function TranscriptView({
         const hidden = hiddenByKey.get(hiddenTurnKey(turn))
         const monologue = hidden?.monologue
         const stanceLabel = monologue ? formatStanceShift(monologue.stance_shift) : null
+        const selection = selectionByTurn.get(turn.turn_index)
 
         return (
           <article
             key={`${turn.turn_index}-${turn.speaker_id}`}
             className="card-padded bg-slate-900/60"
           >
+            {showOrchestratorDecisions && selection && (
+              <div className="mb-3 rounded-xl border border-violet-900/50 bg-violet-950/20 px-3 py-2.5">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-violet-400/80">
+                  <span>Orchestrator</span>
+                  <span className="normal-case tracking-normal text-violet-300/70">
+                    → {selection.next_speaker}
+                  </span>
+                  <span className="rounded bg-violet-950/80 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-violet-400/60">
+                    {METHOD_LABELS[selection.method] ?? selection.method}
+                  </span>
+                </div>
+                <p className="text-sm leading-relaxed text-violet-200/80">{selection.reason}</p>
+              </div>
+            )}
+
             <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
               <span
                 className={`rounded-md px-2 py-0.5 text-xs font-bold text-white ${roleColor(turn.speaker_id)}`}

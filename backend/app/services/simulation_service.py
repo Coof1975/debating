@@ -214,7 +214,18 @@ def replay_events_from_record(row: Meeting) -> list[dict[str, Any]]:
         if isinstance(turn_index, int):
             hidden_by_turn[turn_index] = hidden
 
+    selection_by_turn: dict[int, dict[str, Any]] = {}
+    for selection in record.metadata.get("speaker_selections") or []:
+        if not isinstance(selection, dict):
+            continue
+        turn_index = selection.get("turn_index")
+        if isinstance(turn_index, int):
+            selection_by_turn[turn_index] = selection
+
     for turn in record.messages:
+        selection = selection_by_turn.get(turn.turn_index)
+        if selection:
+            events.append({"type": "orchestrator", "data": selection})
         hidden = hidden_by_turn.get(turn.turn_index)
         if hidden:
             events.append({"type": "monologue", "data": hidden})

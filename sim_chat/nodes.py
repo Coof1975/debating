@@ -121,8 +121,11 @@ def _parse_secretary_response(raw: str, state: MeetingState) -> SecretaryVerdict
 
 def make_orchestrator_node(llm: LLMProvider):
     def orchestrator_node(state: MeetingState) -> dict:
-        next_speaker = select_next_speaker(state, llm)
-        return {"current_speaker": next_speaker}
+        selection = select_next_speaker(state, llm)
+        return {
+            "current_speaker": selection.next_speaker,
+            "speaker_selections": [selection],
+        }
 
     return orchestrator_node
 
@@ -144,6 +147,9 @@ def make_persona_node(llm: LLMProvider):
             participant_ids=state["participant_ids"],
             shared_facts=state.get("shared_facts") or [],
             speaker_id=speaker_id,
+            relationship_matrix=state.get("relationship_matrix"),
+            last_speaker=state.get("last_speaker") or "",
+            recent_messages=state.get("messages") or [],
         )
 
         turn_index = state["turn_index"] + 1

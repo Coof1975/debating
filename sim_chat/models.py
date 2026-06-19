@@ -89,6 +89,7 @@ class InternalMonologue(BaseModel):
     absorb: str
     compromise_space: str
     stance_shift: float = Field(default=0.0, ge=-1.0, le=1.0)
+    relationship_lens: str = ""
 
 
 class HiddenTurn(BaseModel):
@@ -97,6 +98,26 @@ class HiddenTurn(BaseModel):
     speaker_id: str
     turn_index: int
     monologue: InternalMonologue
+
+
+class SpeakerSelectionMethod(str, Enum):
+    """How the orchestrator picked the next speaker."""
+
+    OPENING = "opening"
+    DIRECT_REQUEST = "direct_request"
+    CONFLICT_SHORTCUT = "conflict_shortcut"
+    LLM = "llm"
+    CONFLICT_OVERRIDE = "conflict_override"
+    HEURISTIC_FALLBACK = "heuristic_fallback"
+
+
+class SpeakerSelection(BaseModel):
+    """Orchestrator decision for who speaks next (meta, not public speech)."""
+
+    next_speaker: str
+    reason: str
+    method: SpeakerSelectionMethod
+    turn_index: int
 
 
 class NegotiationProfile(BaseModel):
@@ -228,6 +249,7 @@ class MeetingState(TypedDict):
     transcript_summary: str
     summary_through_turn: int
     hidden_turns: Annotated[list[HiddenTurn], operator.add]
+    speaker_selections: Annotated[list[SpeakerSelection], operator.add]
     last_monologue: dict[str, InternalMonologue]
     negotiation_profiles: dict[str, NegotiationProfile]
     working_proposals: list[WorkingProposal]

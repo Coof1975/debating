@@ -55,10 +55,13 @@ def test_build_speech_user_message_includes_monologue() -> None:
         absorb="Đồng ý một phần.",
         compromise_space="Chia pha.",
         stance_shift=0.2,
+        relationship_lens="Hơi bực với CFO nhưng phải giữ mặt.",
     )
     message = build_speech_user_message("[Cuộc họp: test]", monologue)
     assert "[ABSORB]" in message
+    assert "[RELATIONSHIP LENS]" in message
     assert "Đồng ý một phần." in message
+    assert "Hơi bực" in message
 
 
 def test_generate_persona_speech_disabled_uses_single_call() -> None:

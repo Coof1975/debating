@@ -18,6 +18,21 @@ export type HiddenTurn = {
   monologue: InternalMonologue
 }
 
+export type SpeakerSelectionMethod =
+  | 'opening'
+  | 'direct_request'
+  | 'conflict_shortcut'
+  | 'llm'
+  | 'conflict_override'
+  | 'heuristic_fallback'
+
+export type SpeakerSelection = {
+  next_speaker: string
+  reason: string
+  method: SpeakerSelectionMethod
+  turn_index: number
+}
+
 export type ProposalApproval = {
   persona_id: string
   score: number

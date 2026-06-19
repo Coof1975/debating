@@ -48,6 +48,7 @@ class MeetingConfig(BaseModel):
     max_output_tokens: int = 1024
     use_mock: bool = False
     enable_internal_monologue: bool = True
+    enable_relationship_reasoning: bool = True
     monologue_in_sse: bool = False
     enable_dynamic_compromise: bool = True
     enable_working_proposals: bool = True

@@ -35,6 +35,9 @@ export function MeetingSimulationTab() {
     hiddenTurns,
     showInternalReasoning,
     setShowInternalReasoning,
+    showOrchestratorDecisions,
+    setShowOrchestratorDecisions,
+    speakerSelections,
     workingProposals,
     sharedFacts,
     insight,
@@ -142,20 +145,33 @@ export function MeetingSimulationTab() {
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
                 Conversation
               </h2>
-              <label className="flex min-h-10 cursor-pointer items-center gap-2 text-xs text-slate-400">
-                <input
-                  type="checkbox"
-                  checked={showInternalReasoning}
-                  onChange={(e) => setShowInternalReasoning(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500/40"
-                />
-                Show internal reasoning
-              </label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                <label className="flex min-h-10 cursor-pointer items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={showOrchestratorDecisions}
+                    onChange={(e) => setShowOrchestratorDecisions(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500/40"
+                  />
+                  Show orchestrator decisions
+                </label>
+                <label className="flex min-h-10 cursor-pointer items-center gap-2 text-xs text-slate-400">
+                  <input
+                    type="checkbox"
+                    checked={showInternalReasoning}
+                    onChange={(e) => setShowInternalReasoning(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-indigo-500 focus:ring-indigo-500/40"
+                  />
+                  Show internal reasoning
+                </label>
+              </div>
             </div>
             <TranscriptView
               turns={turns}
               hiddenTurns={hiddenTurns}
+              speakerSelections={speakerSelections}
               showInternalReasoning={showInternalReasoning}
+              showOrchestratorDecisions={showOrchestratorDecisions}
               isLive={isStreaming && stream.isLive}
             />
           </div>

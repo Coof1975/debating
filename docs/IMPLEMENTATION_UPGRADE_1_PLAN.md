@@ -577,6 +577,7 @@ So sánh `enable_internal_monologue=False` vs `True` trên cùng meeting topic:
 - Kiến trúc engine (cập nhật multi-domain): [`sim_chat/docs/architecture.md`](../sim_chat/docs/architecture.md)
 - Quick start engine: [`sim_chat/README.md`](../sim_chat/README.md)
 - Implementation plan sản phẩm (admin/meeting/chat): [`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+- Upgrade 2 — facilitator extension: [`docs/IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md)
 - Persona seed (enterprise): `test_data/*_persona.md`
 
 ---

@@ -1,4 +1,5 @@
 import type { DialogueTurn, HiddenTurn, SpeakerSelection } from '../types'
+import { FACILITATOR_SPEAKER_ID } from '../lib/meetingExtension'
 import {
   formatMonologue,
   formatStanceShift,
@@ -15,6 +16,7 @@ const METHOD_LABELS: Record<SpeakerSelection['method'], string> = {
   llm: 'llm',
   conflict_override: 'conflict override',
   heuristic_fallback: 'heuristic',
+  facilitator_directive: 'facilitator directive',
 }
 
 export function TranscriptView({
@@ -50,13 +52,18 @@ export function TranscriptView({
         const monologue = hidden?.monologue
         const stanceLabel = monologue ? formatStanceShift(monologue.stance_shift) : null
         const selection = selectionByTurn.get(turn.turn_index)
+        const isFacilitator = turn.speaker_id === FACILITATOR_SPEAKER_ID
 
         return (
           <article
             key={`${turn.turn_index}-${turn.speaker_id}`}
-            className="card-padded bg-slate-900/60"
+            className={
+              isFacilitator
+                ? 'card-padded border border-amber-500/35 bg-amber-950/25'
+                : 'card-padded bg-slate-900/60'
+            }
           >
-            {showOrchestratorDecisions && selection && (
+            {showOrchestratorDecisions && selection && !isFacilitator && (
               <div className="mb-3 rounded-xl border border-violet-900/50 bg-violet-950/20 px-3 py-2.5">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-violet-400/80">
                   <span>Orchestrator</span>
@@ -75,15 +82,22 @@ export function TranscriptView({
               <span
                 className={`rounded-md px-2 py-0.5 text-xs font-bold text-white ${roleColor(turn.speaker_id)}`}
               >
-                {turn.speaker_id}
+                {isFacilitator ? 'FACILITATOR' : turn.speaker_id}
               </span>
-              <span className="text-sm font-medium text-slate-200">{turn.speaker_name}</span>
+              <span className={`text-sm font-medium ${isFacilitator ? 'text-amber-100' : 'text-slate-200'}`}>
+                {turn.speaker_name}
+              </span>
+              {isFacilitator && (
+                <span className="rounded bg-amber-900/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-amber-200/80">
+                  Người tổ chức
+                </span>
+              )}
               <span className="text-xs text-slate-500">
                 Turn {turn.turn_index} · Round {turn.round_number}
               </span>
             </div>
 
-            {showInternalReasoning && monologue && (
+            {showInternalReasoning && monologue && !isFacilitator && (
               <div className="mb-3 rounded-xl border border-slate-800/80 bg-slate-950/50 px-3 py-2.5">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-slate-500">
                   <span>Internal reasoning</span>
@@ -97,7 +111,7 @@ export function TranscriptView({
               </div>
             )}
 
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">
+            <p className={`whitespace-pre-wrap text-sm leading-relaxed ${isFacilitator ? 'text-amber-50/95' : 'text-slate-300'}`}>
               {turn.content}
             </p>
           </article>

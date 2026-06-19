@@ -42,6 +42,23 @@ class RerunMeetingRequest(BaseModel):
     max_turns: int | None = None
 
 
+class ExtendMeetingRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+    force: bool = False
+
+
+class ExtensionSignificanceResponse(BaseModel):
+    is_significant: bool
+    reason: str
+    suggestion: str
+
+
+class ExtensionRejectedResponse(BaseModel):
+    accepted: bool = False
+    reason: str
+    suggestion: str
+
+
 class MeetingListItem(BaseModel):
     id: str
     topic: str

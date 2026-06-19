@@ -15,6 +15,9 @@ from app.db.models import MeetingStatus
 from app.db.session import get_db
 from app.schemas.meeting import (
     CreateMeetingRequest,
+    ExtendMeetingRequest,
+    ExtensionRejectedResponse,
+    ExtensionSignificanceResponse,
     MeetingListItem,
     MeetingResponse,
     RerunMeetingRequest,
@@ -186,5 +189,61 @@ def rerun_meeting(
 
     meeting_service.mark_meeting_running(db, meeting_id)
     simulation_service.start_meeting_simulation(meeting_id)
+    row = meeting_service.get_meeting_or_404(db, meeting_id)
+    return meeting_service.to_response(row)
+
+
+@router.post("/{meeting_id}/extend/evaluate", response_model=ExtensionSignificanceResponse)
+def evaluate_meeting_extension(
+    meeting_id: str,
+    payload: ExtendMeetingRequest,
+    db: Session = Depends(get_db),
+) -> ExtensionSignificanceResponse:
+    try:
+        result = simulation_service.evaluate_extension(db, meeting_id, payload.content)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ExtensionSignificanceResponse(
+        is_significant=result.is_significant,
+        reason=result.reason,
+        suggestion=result.suggestion,
+    )
+
+
+@router.post(
+    "/{meeting_id}/extend",
+    response_model=MeetingResponse,
+    responses={409: {"model": ExtensionRejectedResponse}},
+    status_code=202,
+)
+def extend_meeting(
+    meeting_id: str,
+    payload: ExtendMeetingRequest,
+    db: Session = Depends(get_db),
+) -> MeetingResponse:
+    try:
+        simulation_service.extend_meeting_simulation(
+            db,
+            meeting_id,
+            payload.content,
+            force=payload.force,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except simulation_service.ExtensionRejected as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "accepted": False,
+                "reason": exc.reason,
+                "suggestion": exc.suggestion,
+            },
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     row = meeting_service.get_meeting_or_404(db, meeting_id)
     return meeting_service.to_response(row)

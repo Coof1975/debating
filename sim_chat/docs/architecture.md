@@ -6,7 +6,8 @@ The engine is **domain-agnostic**: the same core runs corporate meetings, tutori
 
 Related docs:
 
-- Upgrade plan (historical): [`docs/IMPLEMENTATION_UPGRADE_1_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_1_PLAN.md)
+- Upgrade 1 (multi-stage reasoning): [`docs/IMPLEMENTATION_UPGRADE_1_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_1_PLAN.md)
+- Upgrade 2 (facilitator extension / resume): [`docs/IMPLEMENTATION_UPGRADE_2_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_2_PLAN.md)
 - Admin / meeting UI plan: [`docs/IMPLEMENTATION_PLAN.md`](../../docs/IMPLEMENTATION_PLAN.md)
 - Quick start: [`../README.md`](../README.md)
 
@@ -299,6 +300,8 @@ Uses `get_domain(state["config"].domain_id)` for prompts and keywords. Does **no
 
 **Private chat** (`private_chat.py`) — 1-1 Q&A after session; uses persona system prompt + full transcript + relationship matrix.
 
+**Meeting extension (planned — Upgrade 2)** — facilitator injects a directive after `completed`; significance gate → hydrate `MeetingState` from `MeetingRecord` → resume graph. See **§17**.
+
 ---
 
 ## 9. MeetingConfig
@@ -309,6 +312,7 @@ Uses `get_domain(state["config"].domain_id)` for prompts and keywords. Does **no
 |-------|------|
 | **Domain** | `domain_id` (default `"enterprise"`) |
 | **Lifecycle** | `meeting_topic`, `max_rounds`, `max_turns`, `opening_speaker`, `participant_ids`, `key_stakeholders` |
+| **Extension** | `enable_meeting_extension`, `extension_turn_budget`, `max_extensions_per_meeting`, `extension_stagnation_reset` |
 | **Stopping** | `consensus_threshold`, `consensus_check_interval`, `stagnation_*`, `enable_consensus_check`, `enable_stagnation_check` |
 | **Transcript** | `transcript_window_*`, `enable_rolling_summary`, `rolling_summary_*` |
 | **LLM** | `llm_provider`, `llm_model`, `use_mock`, `reasoning_max_tokens`, `speech_max_tokens` |
@@ -334,6 +338,7 @@ Backend maps meeting row `config` JSON → `MeetingConfig` (`simulation_service.
 | `secretary` | New verdict |
 | `status` | `turn_index`, `loop_count`, `stagnation_score` |
 | `completed` | Final `MeetingRecord` |
+| `facilitator` | Facilitator turn appended before resume (planned) |
 
 ---
 
@@ -365,6 +370,8 @@ sim_chat/
 ├── llm.py                 OpenAI / Gemini / MockLLM
 ├── insight.py             Post-session report (domain prompt)
 ├── private_chat.py        1-1 follow-up chat
+├── resume.py              state_from_record, prepare_extension_state
+├── extension.py           significance classifier
 ├── persistence.py         MeetingRecord I/O
 ├── export.py              Export utilities
 ├── examples/              CLI runners
@@ -438,6 +445,7 @@ Dry-run without API keys: `MeetingConfig(use_mock=True)`.
 | SSE streaming | Done |
 | Post-session insight + private chat | Done |
 | Enterprise product (backend/frontend) | Done |
+| Resume sim after completed (facilitator extension) | Phase A done — [`resume.py`](../sim_chat/resume.py), [`extension.py`](../sim_chat/extension.py); API/UI Phase B–C |
 | `domain_id` in meeting wizard UI | Not yet — config JSON only |
 | Vector RAG for persona KB | Out of scope |
 | Dynamic matrix update each turn | Out of scope |
@@ -463,3 +471,101 @@ After changing `sim_chat/`, restart the backend. Set `domain_id` and pillar flag
 - **New LLM steps** — add `MeetingConfig` flag + domain prompt field + MockLLM branch.
 - **Consensus** — keep secretary prompt and `check_consensus` in sync per domain.
 - **Token pressure** — cap/summarize blackboard data before persona context injection.
+
+---
+
+## 17. Meeting extension & resume (Upgrade 2 — planned)
+
+Allows a **human facilitator** (not a sim persona) to append a directive after the graph has reached `finalize`. If the message passes a **significance gate**, the same `MeetingRecord` is hydrated back into `MeetingState` and `iter_meeting_events()` runs again.
+
+### 17.1 Position in product flow
+
+```
+Initial run:  START → … → finalize → completed → insight
+Extension:    facilitator turn → significance? → resume graph → completed → insight (regenerated)
+```
+
+Distinct from:
+
+- **Rerun** — discard transcript, cold start
+- **Private chat** — 1-1, no group graph
+- **Follow-up meeting** — new meeting row, new topic from insight
+
+### 17.2 Facilitator turn
+
+| Field | Value |
+|-------|-------|
+| `speaker_id` | `"FACILITATOR"` (not in `participant_ids`) |
+| `speaker_name` | `"Người tổ chức"` (or domain label) |
+| Placement | Appended to `messages` before graph resume |
+
+`host_id` on the meeting row remains the **AI opening persona** (e.g. CEO). The real user acts only via `FACILITATOR` turns during extension.
+
+### 17.3 Resume pipeline
+
+```mermaid
+flowchart LR
+  R[MeetingRecord] --> H[state_from_record]
+  H --> F[append_facilitator_turn]
+  F --> G[iter_meeting_events]
+  G --> R2[Updated MeetingRecord]
+  R2 --> I[regenerate insight]
+```
+
+**`state_from_record`** restores: `messages`, `working_proposals`, `shared_facts`, `relationship_matrix`, `turn_index`, counters; clears `terminated` / `termination_reason`.
+
+**Extension budget:** `extension_turn_budget` caps new persona turns per extension; optional `max_extensions_per_meeting` at product layer.
+
+### 17.4 Significance gate
+
+Module: `extension.py` (planned).
+
+LLM classifier returns `{ is_significant, reason, suggestion }`. Resume only when `is_significant` or user sets `force=true`.
+
+| Accept | Reject |
+|--------|--------|
+| New budget / deadline / decision | Thanks, filler |
+| Group-wide directive | Repeat of prior transcript |
+| Changed success criteria | Better suited to private chat |
+
+### 17.5 Orchestrator & persona changes
+
+When `last_speaker == "FACILITATOR"`:
+
+1. **Orchestrator** — prefer directly addressed participant; new `SpeakerSelectionMethod.FACILITATOR_DIRECTIVE`.
+2. **Context** (`context.py`) — inject `## CHỈ ĐẠO TỪ NGƯỜI TỔ CHỨC` block for the next persona turn.
+
+### 17.6 Stopping after resume
+
+- `turn_index` continues from hydrated state.
+- Effective max turns = prior count + `extension_turn_budget` (config copy for this run segment).
+- Optional `extension_stagnation_reset`: zero `stagnation_score` so a fresh directive is not immediately killed by prior stagnation.
+
+### 17.7 Persistence
+
+Phase 1: audit in `MeetingRecord.metadata.extensions[]`:
+
+```json
+{
+  "index": 1,
+  "facilitator_content": "...",
+  "significance_reason": "...",
+  "forced": false,
+  "turns_added": 6
+}
+```
+
+Optional later: `meeting_extensions` DB table (migration `006`).
+
+### 17.8 API & UI (product layer)
+
+| Endpoint | Role |
+|----------|------|
+| `POST /meetings/:id/extend/evaluate` | Classifier preview |
+| `POST /meetings/:id/extend` | Start resume + SSE |
+
+UI: `FacilitatorComposer` on Simulation tab when `status === completed`.
+
+Full task breakdown: [`docs/IMPLEMENTATION_UPGRADE_2_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_2_PLAN.md).
+
+---

@@ -37,10 +37,65 @@ class MockLLMProvider:
         self._turn += 1
         role_match = re.search(r"Bạn là \*\*([^*]+)\*\*", system_prompt)
         name = role_match.group(1) if role_match else "Thành viên"
+        if (
+            "NGƯỜI TỔ CHỨC" in system_prompt.upper()
+            or "MỞ LẠI TRANH LUẬN NHÓM" in system_prompt.upper()
+        ):
+            content_match = re.search(r'Tin nhắn mới: "([^"]*)"', user_message)
+            content = content_match.group(1) if content_match else user_message
+            lowered = content.lower()
+            if any(marker in lowered for marker in ("cảm ơn", "thank you", "ok", "đã rõ", "tốt rồi")):
+                return json.dumps(
+                    {
+                        "is_significant": False,
+                        "reason": "Dry-run: tin nhắn xác nhận/filler.",
+                        "suggestion": "none",
+                    },
+                    ensure_ascii=False,
+                )
+            if "giải thích thêm quan điểm cá nhân" in lowered:
+                return json.dumps(
+                    {
+                        "is_significant": False,
+                        "reason": "Dry-run: phù hợp chat riêng.",
+                        "suggestion": "chat_with_persona",
+                    },
+                    ensure_ascii=False,
+                )
+            if any(
+                marker in lowered
+                for marker in ("ngân sách", "triệu", "tỷ", "deadline", "duyệt thêm", "bổ sung")
+            ):
+                return json.dumps(
+                    {
+                        "is_significant": True,
+                        "reason": "Dry-run: directive mới với ràng buộc/số liệu.",
+                        "suggestion": "extend",
+                    },
+                    ensure_ascii=False,
+                )
+            return json.dumps(
+                {
+                    "is_significant": False,
+                    "reason": "Dry-run: không đủ ý nghĩa.",
+                    "suggestion": "none",
+                },
+                ensure_ascii=False,
+            )
         if "MEETING ORCHESTRATOR" in system_prompt.upper() or "ĐIỀU PHỐI VIÊN" in system_prompt.upper():
             roles = re.findall(r"\b(CEO|CFO|MARKETING|PRODUCT|SALE)\b", user_message)
             last_match = re.search(r"Last speaker:\s*(\w+)", user_message)
             last_speaker = last_match.group(1) if last_match else ""
+            if last_speaker == "FACILITATOR":
+                for role in ("CFO", "MARKETING", "PRODUCT", "SALE", "CEO"):
+                    if role in user_message:
+                        return json.dumps(
+                            {
+                                "next_speaker": role,
+                                "reason": "Dry-run: facilitator directive — ưu tiên được gọi tên.",
+                            },
+                            ensure_ascii=False,
+                        )
             for marker in ("trả lời", "phản hồi", "cho ý kiến", "giải thích", "xin ý kiến"):
                 if marker in user_message.lower():
                     for role in ("CFO", "MARKETING", "PRODUCT", "SALE", "CEO"):
@@ -160,6 +215,11 @@ class MockLLMProvider:
                 }
             return json.dumps(payload, ensure_ascii=False)
         if "[ABSORB]" in user_message and "[COMPROMISE SPACE]" in user_message:
+            if "CHỈ ĐẠO TỪ NGƯỜI TỔ CHỨC" in user_message:
+                return (
+                    f"{name}: Theo directive facilitator vừa phát, "
+                    f"tôi sẽ điều chỉnh phương án bộ phận cho phù hợp ràng buộc mới."
+                )
             if "mở đầu cuộc họp" in user_message.lower():
                 return (
                     f"{name}: (dry-run) Mở đầu cuộc họp — nêu mandate, "

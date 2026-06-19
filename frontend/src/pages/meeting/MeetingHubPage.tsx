@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
+import { getExtensionRejected } from '../../api/errors'
 import { MeetingHeader } from '../../components/meeting/MeetingHeader'
 import { MeetingTabNav } from '../../components/meeting/MeetingTabNav'
 import { WorkspaceLayout } from '../../components/WorkspaceLayout'
 import { useMeetingStream } from '../../hooks/useMeetingStream'
 import { parseHiddenTurns } from '../../lib/hiddenTurns'
+import {
+  buildExtensionStreamSeed,
+  extensionSuggestionLabel,
+} from '../../lib/meetingExtension'
 import { parseSpeakerSelections } from '../../lib/speakerSelections'
-import type { LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
+import type { ExtensionRejectedDetail, LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
 import { MeetingHubProvider, type MeetingHubContextValue } from './MeetingHubContext'
 
 export function MeetingHubPage() {
@@ -27,15 +32,15 @@ export function MeetingHubPage() {
   const [showOrchestratorDecisions, setShowOrchestratorDecisions] = useState(false)
   const [providerId, setProviderId] = useState('openai')
   const [modelId, setModelId] = useState('gpt-4o-mini')
+  const [extending, setExtending] = useState(false)
+  const [extensionRejection, setExtensionRejection] = useState<ExtensionRejectedDetail | null>(null)
+  const [pendingExtensionContent, setPendingExtensionContent] = useState('')
 
   const isPending = meeting?.status === 'pending'
   const isStreaming = meeting?.status === 'running'
   const isCompleted = meeting?.status === 'completed'
 
-  const stream = useMeetingStream(
-    isStreaming ? meetingId : null,
-    isStreaming ? meeting?.status : undefined,
-  )
+  const stream = useMeetingStream(meetingId || null, meeting?.status)
 
   const loadMeeting = useCallback(async () => {
     if (!meetingId) return
@@ -61,6 +66,13 @@ export function MeetingHubPage() {
       loadMeeting()
     }
   }, [stream.insightReport, meetingId, loadMeeting])
+
+  useEffect(() => {
+    if (!meetingId || stream.isLive || !stream.terminationReason) return
+    if (meeting?.status === 'running') {
+      loadMeeting()
+    }
+  }, [stream.isLive, stream.terminationReason, meetingId, meeting?.status, loadMeeting])
 
   const activeProvider = useMemo(
     () => providers.find((p) => p.id === providerId),
@@ -138,6 +150,62 @@ export function MeetingHubPage() {
     }
   }
 
+  const dismissExtensionRejection = useCallback(() => {
+    setExtensionRejection(null)
+    setPendingExtensionContent('')
+  }, [])
+
+  const handleEvaluateExtension = useCallback(
+    async (content: string): Promise<string | null> => {
+      if (!meetingId) return null
+      const result = await api.evaluateMeetingExtension(meetingId, { content })
+      if (result.is_significant) {
+        return `Đủ ý nghĩa để mở lại simulation: ${result.reason}`
+      }
+      return `Chưa đủ ý nghĩa: ${result.reason} — ${extensionSuggestionLabel(result.suggestion)}`
+    },
+    [meetingId],
+  )
+
+  const handleExtend = useCallback(
+    async (content: string, force = false) => {
+      if (!meetingId || !meeting) return
+
+      if (
+        force &&
+        !window.confirm(
+          'Classifier cho rằng nội dung chưa đủ ý nghĩa. Vẫn tiếp tục mở lại simulation?',
+        )
+      ) {
+        return
+      }
+
+      setExtending(true)
+      setError(null)
+      setExtensionRejection(null)
+
+      const seed = buildExtensionStreamSeed(meeting)
+
+      try {
+        const updated = await api.extendMeeting(meetingId, { content, force })
+        stream.beginExtension(seed)
+        setMeeting(updated)
+        setPendingExtensionContent('')
+      } catch (err) {
+        const rejection = getExtensionRejected(err)
+        if (rejection) {
+          setExtensionRejection(rejection)
+          setPendingExtensionContent(content)
+        } else {
+          setError(err instanceof Error ? err.message : 'Không thể mở rộng simulation')
+        }
+      } finally {
+        setExtending(false)
+      }
+    },
+    [meeting, meetingId, stream],
+  )
+
   if (loading) {
     return (
       <WorkspaceLayout>
@@ -193,6 +261,12 @@ export function MeetingHubPage() {
     handleRerun,
     deleting,
     handleDelete,
+    extending,
+    extensionRejection,
+    pendingExtensionContent,
+    handleExtend,
+    handleEvaluateExtension,
+    dismissExtensionRejection,
   }
 
   return (

@@ -25,6 +25,7 @@ export type SpeakerSelectionMethod =
   | 'llm'
   | 'conflict_override'
   | 'heuristic_fallback'
+  | 'facilitator_directive'
 
 export type SpeakerSelection = {
   next_speaker: string
@@ -192,6 +193,23 @@ export type RerunMeetingPayload = {
   llm_model?: string
   use_mock?: boolean
   max_turns?: number
+}
+
+export type ExtendMeetingPayload = {
+  content: string
+  force?: boolean
+}
+
+export type ExtensionSignificanceResponse = {
+  is_significant: boolean
+  reason: string
+  suggestion: string
+}
+
+export type ExtensionRejectedDetail = {
+  accepted: false
+  reason: string
+  suggestion: string
 }
 
 export type PersonaSection = {

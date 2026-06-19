@@ -60,3 +60,9 @@ class MeetingConfig(BaseModel):
     fact_dedup_similarity_threshold: float = 0.85
     reasoning_max_tokens: int = 512
     speech_max_tokens: int = 512
+    # Post-meeting facilitator extension (Upgrade 2)
+    enable_meeting_extension: bool = True
+    extension_turn_budget: int = 8
+    max_extensions_per_meeting: int = 3
+    extension_stagnation_reset: bool = True
+    extension_significance_model: str | None = None

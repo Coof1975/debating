@@ -305,6 +305,20 @@ def mark_meeting_running(db: Session, meeting_id: str) -> Meeting:
     return row
 
 
+def mark_meeting_running_for_extension(db: Session, meeting_id: str) -> Meeting:
+    """Transition completed → running for facilitator extension."""
+    row = get_meeting_or_404(db, meeting_id)
+    if row.status != MeetingStatus.COMPLETED:
+        raise ValueError("Extension is only available for completed meetings")
+    if not row.record:
+        raise ValueError("Meeting has no simulation record")
+    row.status = MeetingStatus.RUNNING
+    row.error_message = None
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def mark_meeting_completed(
     db: Session,
     meeting_id: str,

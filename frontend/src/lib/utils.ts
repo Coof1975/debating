@@ -4,6 +4,7 @@ const ROLE_COLORS: Record<string, string> = {
   MARKETING: 'bg-pink-600',
   PRODUCT: 'bg-amber-600',
   SALE: 'bg-violet-600',
+  FACILITATOR: 'bg-amber-700',
 }
 
 export function roleColor(role: string): string {

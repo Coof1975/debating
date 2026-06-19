@@ -4,6 +4,8 @@ import type {
   CompanyProfile,
   CompanyProfileUpdatePayload,
   CreateMeetingPayload,
+  ExtendMeetingPayload,
+  ExtensionSignificanceResponse,
   LlmProviderOption,
   Meeting,
   MeetingListItem,
@@ -18,6 +20,7 @@ import type {
   SendChatMessageResponse,
   UpdateMeetingPayload,
 } from '../types'
+import { ApiRequestError } from './errors'
 
 /** Local dev: empty → Vite proxies /api to localhost:8000. Cloud: set VITE_API_BASE_URL. */
 const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
@@ -33,8 +36,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    const message = (body as { detail?: string }).detail ?? response.statusText
-    throw new Error(message)
+    const detail = (body as { detail?: unknown }).detail
+    let message = response.statusText
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (detail && typeof detail === 'object' && 'reason' in detail) {
+      message = String((detail as { reason?: string }).reason ?? response.statusText)
+    }
+    throw new ApiRequestError(message, response.status, detail)
   }
   if (response.status === 204) {
     return undefined as T
@@ -68,6 +77,16 @@ export const api = {
     request<Meeting>(`/meetings/${id}/rerun`, {
       method: 'POST',
       body: JSON.stringify(payload ?? {}),
+    }),
+  evaluateMeetingExtension: (id: string, payload: ExtendMeetingPayload) =>
+    request<ExtensionSignificanceResponse>(`/meetings/${id}/extend/evaluate`, {
+      method: 'POST',
+      body: JSON.stringify({ content: payload.content }),
+    }),
+  extendMeeting: (id: string, payload: ExtendMeetingPayload) =>
+    request<Meeting>(`/meetings/${id}/extend`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
   deleteMeeting: (id: string) =>
     request<void>(`/meetings/${id}`, { method: 'DELETE' }),
@@ -126,6 +145,8 @@ export const api = {
       },
     ),
 }
+
+export { ApiRequestError, getExtensionRejected } from './errors'
 
 export function streamMeeting(
   meetingId: string,

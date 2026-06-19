@@ -6,6 +6,16 @@ LangGraph engine for multi-participant dialogue: internal monologue, shared prop
 
 Full architecture: [`docs/architecture.md`](docs/architecture.md)
 
+## Capabilities
+
+| Feature | Status |
+|---------|--------|
+| Multi-domain simulation | Done |
+| Internal monologue + proposals + facts | Done |
+| SSE streaming | Done |
+| Post-session private chat | Done (product API) |
+| **Resume after completed (facilitator extension)** | **Phase A done** — engine resume + classifier |
+
 ## Quick start
 
 ```bash
@@ -46,10 +56,25 @@ from sim_chat import (
 )
 ```
 
+Resume from a completed record:
+
+```python
+from sim_chat import prepare_extension_state, iter_meeting_events, run_meeting
+
+state = prepare_extension_state(
+    record,
+    "Sếp duyệt thêm 500 triệu. CFO phản hồi.",
+    prompts=prompts,
+    persona_names=persona_names,
+)
+for event in iter_meeting_events(state["config"], initial_state=state, llm=llm):
+    ...
+```
+
 ## Integrating your app
 
 1. Build a `ParticipantBundle` from your DB (system prompts, names, relationship matrix).
 2. Call `create_initial_state_from_bundle(config, bundle)` or register a domain loader.
 3. Run via `run_meeting()` or `iter_meeting_events()` for SSE.
 
-See **§4 Domain packs** in [`docs/architecture.md`](docs/architecture.md).
+See **§4 Domain packs** and **§17 Meeting extension** in [`docs/architecture.md`](docs/architecture.md).

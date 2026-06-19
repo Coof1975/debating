@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { FacilitatorComposer } from '../../components/meeting/FacilitatorComposer'
+import { ExtensionRejectedBanner } from '../../components/meeting/ExtensionRejectedBanner'
 import { InsightView } from '../../components/InsightView'
 import { TranscriptView } from '../../components/TranscriptView'
 import {
@@ -52,6 +54,12 @@ export function MeetingSimulationTab() {
     showRerun,
     setShowRerun,
     handleRerun,
+    extending,
+    extensionRejection,
+    pendingExtensionContent,
+    handleExtend,
+    handleEvaluateExtension,
+    dismissExtensionRejection,
   } = useMeetingHub()
 
   const nextStepsSection = useMemo(() => extractNextStepsSection(insight), [insight])
@@ -160,6 +168,26 @@ export function MeetingSimulationTab() {
         <div className="rounded-xl border border-rose-500/40 bg-rose-950/40 px-4 py-3 text-sm text-rose-200">
           {displayError}
         </div>
+      )}
+
+      {extensionRejection && (
+        <ExtensionRejectedBanner
+          meetingId={meetingId}
+          rejection={extensionRejection}
+          pendingContent={pendingExtensionContent}
+          onForceContinue={() => handleExtend(pendingExtensionContent, true)}
+          onDismiss={dismissExtensionRejection}
+          forcing={extending}
+        />
+      )}
+
+      {meeting.status === 'completed' && (
+        <FacilitatorComposer
+          onSend={handleExtend}
+          onEvaluate={handleEvaluateExtension}
+          disabled={extending}
+          sending={extending}
+        />
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">

@@ -128,7 +128,7 @@ def run_meeting(
     return record_from_state(
         final_state,
         meeting_id=meeting_id or str(uuid.uuid4()),
-        config=config,
+        config=final_state["config"],
     )
 
 
@@ -253,7 +253,11 @@ def iter_meeting_events(
     if final_state is None:
         raise RuntimeError("Meeting simulation produced no state")
 
-    record = record_from_state(final_state, meeting_id=resolved_id, config=config)
+    record = record_from_state(
+        final_state,
+        meeting_id=resolved_id,
+        config=final_state["config"],
+    )
     yield {
         "type": "completed",
         "data": {

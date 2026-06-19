@@ -8,7 +8,14 @@ from collections import Counter
 
 from .domain import get_domain
 from .llm import LLMProvider
-from .models import DialogueTurn, MeetingState, RelationshipMatrix, SpeakerSelection, SpeakerSelectionMethod
+from .models import (
+    DialogueTurn,
+    FACILITATOR_SPEAKER_ID,
+    MeetingState,
+    RelationshipMatrix,
+    SpeakerSelection,
+    SpeakerSelectionMethod,
+)
 from .transcript import format_transcript_for_context
 
 # Re-export enterprise defaults for backward compatibility in tests/imports.
@@ -197,6 +204,63 @@ def _looks_like_request(content: str) -> bool:
     if re.search(r"\b(?:anh|chị|em|ông|bà)\s+[\wÀ-ỹ]+\s*[,:?]", lowered):
         return True
     return "?" in content
+
+
+def _parse_participant_in_text(state: MeetingState, text: str) -> str | None:
+    """Return participant_id mentioned in text, if any."""
+    participant_ids = state["participant_ids"]
+    lowered = text.lower()
+    for alias, role_id in _build_alias_map(state):
+        if role_id not in participant_ids:
+            continue
+        if alias in lowered:
+            return role_id
+    for role_id in participant_ids:
+        if re.search(rf"\b{re.escape(role_id)}\b", text, re.IGNORECASE):
+            return role_id
+    return None
+
+
+def _selection_after_facilitator(state: MeetingState) -> SpeakerSelection | None:
+    """Pick next speaker when the facilitator just injected a directive."""
+    if state.get("last_speaker") != FACILITATOR_SPEAKER_ID:
+        return None
+
+    messages = state["messages"]
+    if not messages:
+        return None
+
+    content = messages[-1].content
+    named = _parse_participant_in_text(state, content)
+    if named:
+        name = state["persona_names"].get(named, named)
+        return _build_selection(
+            state,
+            next_speaker=named,
+            reason=f"{name} ({named}) được gọi tên trong chỉ đạo facilitator.",
+            method=SpeakerSelectionMethod.FACILITATOR_DIRECTIVE,
+        )
+
+    participant_ids = state["participant_ids"]
+    best_role: str | None = None
+    best_score = 0.0
+    for candidate in participant_ids:
+        score = _topic_bonus(candidate, content, domain_id=state["config"].domain_id)
+        if score > best_score:
+            best_score = score
+            best_role = candidate
+    if best_role and best_score > 0:
+        name = state["persona_names"].get(best_role, best_role)
+        return _build_selection(
+            state,
+            next_speaker=best_role,
+            reason=(
+                f"{name} ({best_role}) có chuyên môn liên quan directive facilitator "
+                f"(topic score={best_score:.2f})."
+            ),
+            method=SpeakerSelectionMethod.FACILITATOR_DIRECTIVE,
+        )
+    return None
 
 
 def detect_requested_speaker(state: MeetingState) -> str | None:
@@ -458,6 +522,10 @@ def select_next_speaker(state: MeetingState, llm: LLMProvider) -> SpeakerSelecti
             reason="Mở đầu cuộc họp theo cấu hình (opening_speaker).",
             method=SpeakerSelectionMethod.OPENING,
         )
+
+    facilitator_selection = _selection_after_facilitator(state)
+    if facilitator_selection is not None:
+        return facilitator_selection
 
     requested = detect_requested_speaker(state)
     if requested and requested in participant_ids:

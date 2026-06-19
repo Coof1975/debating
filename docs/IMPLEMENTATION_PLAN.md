@@ -6,6 +6,7 @@ Tài liệu này mô tả kế hoạch triển khai theo từng phase cho yêu c
 2. **Tạo meeting** — wizard nhiều bước (topic, lịch, ghi chú, persona, chủ trì)
 3. **Simulation** — chạy sau khi tạo, xem transcript + insight report
 4. **Chat** — chat 1-1 với persona sau meeting, xem lại và tiếp tục
+5. **Extend** — facilitator bổ sung nội dung sau `completed`; resume simulation nếu đủ ý nghĩa (Upgrade 2)
 
 ---
 
@@ -16,14 +17,14 @@ Tài liệu này mô tả kế hoạch triển khai theo từng phase cho yêu c
 | Vùng | Mục tiêu |
 |------|----------|
 | Admin | Tách khỏi workspace; quản lý dữ liệu nền (persona, company, meetings) |
-| Workspace | Luồng nghiệp vụ: tạo meeting → chạy sim → chat follow-up |
+| Workspace | Luồng nghiệp vụ: tạo meeting → chạy sim → chat follow-up → (optional) extend sim |
 | Meeting lifecycle | Tạo trước, chạy simulation sau (không auto-start) |
 | Chat | Persist lịch sử chat theo `(meeting_id, persona_id)` |
 
 ### 1.2 Ngoài phạm vi (phase này)
 
 - Authentication / RBAC
-- Group chat nhiều persona trong một thread
+- Group chat nhiều persona trong một thread (chat UI tự do)
 - Cancel/pause simulation đang chạy
 - Hard delete persona (giữ soft deactivate)
 - Mobile-native app
@@ -85,11 +86,14 @@ stateDiagram-v2
   pending --> running: POST /meetings/:id/start
   running --> completed: simulation OK
   running --> failed: simulation error
+  completed --> running: POST /meetings/:id/extend
   completed --> pending: POST /meetings/:id/rerun
   pending --> [*]: DELETE
   completed --> [*]: DELETE
   failed --> pending: rerun
 ```
+
+- **`completed → running` (extend)**: facilitator bổ sung directive có ý nghĩa; graph resume từ `MeetingRecord`. Chi tiết: [`IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md).
 
 - **`pending`**: meeting đã tạo, chưa chạy simulation (thay cho “draft” riêng — tái sử dụng enum hiện có).
 - **`running` / `completed` / `failed`**: giữ nguyên semantics hiện tại.
@@ -152,8 +156,11 @@ chat_messages (
 | **2** | Meeting hub (3 tabs) | Overview / Simulation / Chat placeholder | Phase 1 | M |
 | **3** | Post-meeting chat | API + persist + UI chat persona | Phase 2 | L |
 | **4** | Admin polish | Bảng quản trị meeting, sửa draft, prompt preview | Phase 0–1 | M |
+| **5** | Facilitator extension | Resume sim sau `completed` + significance gate + UI composer | Phase 2–3 | M |
 
 **Effort:** S ≈ 1–2 ngày, M ≈ 3–5 ngày, L ≈ 5–8 ngày (1 dev full-stack).
+
+Phase 5 chi tiết engine/API/UI: [`IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md).
 
 ---
 
@@ -346,8 +353,10 @@ Nested routes:
 |--------|----------|------------|------|
 | `pending` | ✅ Edit metadata (phase 4), Run sim | Disabled / “Chưa chạy” | Disabled |
 | `running` | ✅ Status live | ✅ SSE stream | Disabled |
-| `completed` | ✅ Summary | ✅ Transcript + insight | ✅ Enabled (phase 3) |
+| `completed` | ✅ Summary | ✅ Transcript + insight + facilitator composer (phase 5) | ✅ Enabled (phase 3) |
 | `failed` | ✅ Error + Rerun | ✅ Error detail | Disabled |
+
+Khi **extend** đang chạy (`completed → running`): Simulation tab SSE live; Chat tab disabled (giống lần chạy đầu).
 
 ### Acceptance criteria
 
@@ -518,6 +527,36 @@ Backend optional: mở rộng `GET /meetings` với query filters.
 
 ---
 
+## Phase 5 — Facilitator Extension (Upgrade 2)
+
+### Mục tiêu
+
+Sau khi simulation `completed`, người dùng (facilitator) bổ sung directive trên tab Simulation. Nếu **significance gate** chấp nhận, graph resume trên cùng meeting; persona phản ứng trước nhóm; insight regenerate.
+
+### Deliverables
+
+- [ ] `sim_chat/resume.py` — hydrate state từ `MeetingRecord`
+- [ ] `sim_chat/extension.py` — significance classifier
+- [ ] Orchestrator + context hỗ trợ `FACILITATOR` turn
+- [ ] `POST /meetings/:id/extend` (+ optional `/evaluate`)
+- [ ] `FacilitatorComposer` trên `MeetingSimulationTab`
+- [ ] Lifecycle `completed → running → completed`
+
+### Tài liệu chi tiết
+
+Toàn bộ spec engine, API, UI, test checklist, rủi ro: **[`IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md)**
+
+### Acceptance criteria (tóm tắt)
+
+- [ ] Directive ngân sách/deadline mới → sim tiếp tục, persona phản hồi
+- [ ] Tin filler → 409 + gợi ý; `force: true` override
+- [ ] Insight cập nhật sau extend
+- [ ] Rerun / chat 1-1 / follow-up meeting không regression
+
+**Phụ thuộc:** Phase 2 (Simulation tab), Phase 3 (phân biệt extend vs chat 1-1). **Effort:** M (~1–2 tuần).
+
+---
+
 ## 4. API contract summary (sau tất cả phase)
 
 ### Meetings
@@ -545,6 +584,17 @@ GET   /api/meetings/{id}/stream
 DELETE /api/meetings/{id}
 ```
 
+### Extend (Phase 5 / Upgrade 2)
+
+```http
+POST /api/meetings/{id}/extend/evaluate   { "content": "..." }
+POST /api/meetings/{id}/extend            { "content": "...", "force": false }
+```
+
+Preconditions: `status == completed`, `record` present, dưới `max_extensions`. Reject insignificant → `409` + suggestion. Accept → `202`, client subscribe `/stream`.
+
+Chi tiết: [`IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md).
+
 ### Chat (Phase 3)
 
 ```http
@@ -571,6 +621,7 @@ gantt
   Phase 3 Chat API + UI   :p3, after p2, 6d
   section Polish
   Phase 4 Admin polish    :p4, after p1, 3d
+  Phase 5 Extend sim      :p5, after p3, 5d
 ```
 
 **Khuyến nghị branch:**
@@ -582,8 +633,9 @@ gantt
 | `feat/meeting-hub` | 2 |
 | `feat/post-meeting-chat` | 3 |
 | `feat/admin-polish` | 4 (có thể song song sau phase 1) |
+| `feat/meeting-extension` | 5 |
 
-Merge tuần tự 0 → 1 → 2 → 3; phase 4 có thể tách PR nhỏ independent.
+Merge tuần tự 0 → 1 → 2 → 3 → 5; phase 4 có thể tách PR nhỏ independent.
 
 ---
 
@@ -631,13 +683,34 @@ Merge tuần tự 0 → 1 → 2 → 3; phase 4 có thể tách PR nhỏ independ
 - [ ] Switch sang CEO → session riêng
 - [ ] Meeting cũ mở lại → tiếp tục chat
 
+### Extend (Phase 5)
+- [ ] Completed → facilitator bổ sung ngân sách mới → sim tiếp tục
+- [ ] Tin filler → reject + gợi ý; `force` vẫn chạy
+- [ ] Insight cập nhật sau extend
+- [ ] Rerun / chat 1-1 không regression
+
 ---
 
 ## 9. Tài liệu liên quan
 
 - Thiết kế UI chi tiết: thảo luận trong chat (IA, wireframe, tab matrix)
 - Simulation engine: [`sim_chat/README.md`](../sim_chat/README.md) · kiến trúc đầy đủ [`sim_chat/docs/architecture.md`](../sim_chat/docs/architecture.md) (multi-domain)
+- Upgrade 2 — facilitator extension: [`IMPLEMENTATION_UPGRADE_2_PLAN.md`](IMPLEMENTATION_UPGRADE_2_PLAN.md)
+- Upgrade 1 — multi-stage reasoning: [`IMPLEMENTATION_UPGRADE_1_PLAN.md`](IMPLEMENTATION_UPGRADE_1_PLAN.md)
 - Seed flow: `scripts/seed.py`, `backend/scripts/seed_db.py`
+
+---
+
+## 10. Addendum — trạng thái triển khai (2026-06-19)
+
+| Phase | Trạng thái |
+|-------|------------|
+| 0 Admin shell | ✅ |
+| 1 Meeting wizard + metadata | ✅ |
+| 2 Meeting hub (3 tabs) | ✅ |
+| 3 Post-meeting chat | ✅ |
+| 4 Admin polish | ⚠️ một phần |
+| 5 Facilitator extension | ⚠️ Phase A–B done (engine + API); Phase C UI pending |
 
 ---
 

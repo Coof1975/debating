@@ -12,6 +12,10 @@ from typing_extensions import TypedDict
 from .config import MeetingConfig
 
 
+FACILITATOR_SPEAKER_ID = "FACILITATOR"
+FACILITATOR_SPEAKER_NAME = "Người tổ chức"
+
+
 class TerminationReason(str, Enum):
     MAX_ROUNDS = "max_rounds"
     CONSENSUS = "consensus"
@@ -109,6 +113,7 @@ class SpeakerSelectionMethod(str, Enum):
     LLM = "llm"
     CONFLICT_OVERRIDE = "conflict_override"
     HEURISTIC_FALLBACK = "heuristic_fallback"
+    FACILITATOR_DIRECTIVE = "facilitator_directive"
 
 
 class SpeakerSelection(BaseModel):

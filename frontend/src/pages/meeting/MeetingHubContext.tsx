@@ -1,6 +1,15 @@
 import { createContext, useContext } from 'react'
 import type { useMeetingStream } from '../../hooks/useMeetingStream'
-import type { DialogueTurn, HiddenTurn, LlmProviderOption, Meeting, SharedFact, SpeakerSelection, WorkingProposal } from '../../types'
+import type {
+  DialogueTurn,
+  ExtensionRejectedDetail,
+  HiddenTurn,
+  LlmProviderOption,
+  Meeting,
+  SharedFact,
+  SpeakerSelection,
+  WorkingProposal,
+} from '../../types'
 
 export type MeetingHubContextValue = {
   meetingId: string
@@ -38,6 +47,12 @@ export type MeetingHubContextValue = {
   handleRerun: () => Promise<void>
   deleting: boolean
   handleDelete: () => Promise<void>
+  extending: boolean
+  extensionRejection: ExtensionRejectedDetail | null
+  pendingExtensionContent: string
+  handleExtend: (content: string, force?: boolean) => Promise<void>
+  handleEvaluateExtension: (content: string) => Promise<string | null>
+  dismissExtensionRejection: () => void
 }
 
 const MeetingHubContext = createContext<MeetingHubContextValue | null>(null)

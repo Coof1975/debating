@@ -36,11 +36,11 @@ PERSONA_FILES: dict[PersonaRole, str] = {
 
 # Which company-profile sections each role prioritizes in prompts.
 ROLE_COMPANY_SECTIONS: dict[PersonaRole, list[str]] = {
-    PersonaRole.CEO: ["financial", "production", "distribution", "marketing"],
-    PersonaRole.CFO: ["financial", "production", "distribution"],
-    PersonaRole.MARKETING: ["marketing", "financial", "distribution"],
-    PersonaRole.PRODUCT: ["production", "financial", "distribution"],
-    PersonaRole.SALE: ["distribution", "financial", "marketing"],
+    PersonaRole.CEO: ["financial", "production", "distribution", "marketing", "flashpoints"],
+    PersonaRole.CFO: ["financial", "production", "distribution", "flashpoints"],
+    PersonaRole.MARKETING: ["marketing", "financial", "distribution", "flashpoints"],
+    PersonaRole.PRODUCT: ["production", "financial", "distribution", "flashpoints"],
+    PersonaRole.SALE: ["distribution", "financial", "marketing", "flashpoints"],
 }
 
 

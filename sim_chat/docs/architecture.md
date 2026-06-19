@@ -1,26 +1,62 @@
-# Virtual Meeting Room — Architecture
+# Multi-Agent Simulation Engine — Architecture
 
-LangGraph-based multi-persona meeting simulation. Each persona is a **digital twin** driven by a system prompt, negotiation profile, and shared meeting state. The graph uses a **centralized state** and a **Python-orchestrated speaker loop** (LLM assists selection; routing is not left to personas).
+LangGraph-based **multi-persona dialogue simulation**. Each participant is a **digital twin** driven by a system prompt, optional negotiation profile, and shared session state. The graph uses **centralized state** and a **Python-orchestrated speaker loop** (LLM assists selection; routing is not left to participants).
 
-Related docs: product plan [`docs/IMPLEMENTATION_UPGRADE_1_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_1_PLAN.md), admin/meeting UI [`docs/IMPLEMENTATION_PLAN.md`](../../docs/IMPLEMENTATION_PLAN.md).
+The engine is **domain-agnostic**: the same core runs corporate meetings, tutoring sessions, investment advisory panels, and other verticals via **domain packs** (`sim_chat/domains/`).
+
+Related docs:
+
+- Upgrade plan (historical): [`docs/IMPLEMENTATION_UPGRADE_1_PLAN.md`](../../docs/IMPLEMENTATION_UPGRADE_1_PLAN.md)
+- Admin / meeting UI plan: [`docs/IMPLEMENTATION_PLAN.md`](../../docs/IMPLEMENTATION_PLAN.md)
+- Quick start: [`../README.md`](../README.md)
 
 ---
 
 ## 1. System overview
 
-| Layer | Role |
-|-------|------|
-| **`sim_chat/`** | LangGraph engine: graph, nodes, state, stopping, SSE streaming |
-| **`src/debating/`** | Persona domain: prompts, loaders, negotiation defaults |
-| **`backend/`** | FastAPI: meetings CRUD, simulation worker, chat sessions, DB |
-| **`frontend/`** | React: meeting hub, live transcript, proposals panel, persona admin |
+| Layer | Role | Domain-specific? |
+|-------|------|------------------|
+| **`sim_chat/`** (core) | LangGraph engine: graph, nodes, state, stopping, SSE | No |
+| **`sim_chat/domains/`** | Prompts, labels, role keywords, participant loaders | Yes — one pack per vertical |
+| **`src/debating/`** | Enterprise data: persona/company markdown → prompts | Yes — `enterprise` domain only |
+| **`backend/`** | FastAPI: meetings CRUD, simulation worker, chat, DB | Product layer (currently enterprise UI) |
+| **`frontend/`** | React: meeting hub, transcript, proposals, persona admin | Product layer |
+
+```mermaid
+flowchart TB
+  subgraph apps [Applications]
+    BE[backend / frontend]
+    CLI[sim_chat/examples]
+    OTHER[Your CMS / API]
+  end
+
+  subgraph domains [Domain packs]
+    ENT[enterprise]
+    TUT[tutoring]
+    SEC[securities]
+  end
+
+  subgraph core [sim_chat core]
+    G[graph.py]
+    N[nodes.py]
+    O[orchestrator.py]
+    R[reasoning / proposals / facts]
+  end
+
+  BE --> ENT
+  CLI --> domains
+  OTHER -->|ParticipantBundle| core
+  domains -->|SimulationDomain prompts| core
+  ENT --> src_debating[src/debating]
+```
 
 **Design principles**
 
-- **Orchestrator-controlled flow** — personas do not route the graph themselves.
+- **Orchestrator-controlled flow** — participants do not route the graph themselves.
 - **Public vs hidden** — only `DialogueTurn.content` is the public transcript; monologue and reasoning JSON stay in metadata unless `monologue_in_sse=True`.
 - **Structured debate** — free-text chat is augmented by `working_proposals` and `shared_facts` on a shared blackboard.
-- **Feature flags** — each upgrade pillar can be toggled via `MeetingConfig` without code changes.
+- **Feature flags** — each pillar toggled via `MeetingConfig` without code changes.
+- **Domain injection** — LLM system prompts for orchestrator, secretary, insight, reasoning, and fact extraction come from the active `SimulationDomain`, not hardcoded in nodes.
 
 ---
 
@@ -31,7 +67,7 @@ START
   → orchestrator     (pick next_speaker)
   → persona          (reason → speak → extract)
   → route_after_turn
-       ├─ orchestrator   (continue debate)
+       ├─ orchestrator   (continue)
        ├─ secretary      (consensus check)
        └─ end → finalize (set termination_reason)
   → END
@@ -58,189 +94,229 @@ flowchart LR
 | `build_meeting_graph()` | `graph.py` | Compile `StateGraph` |
 | `run_meeting()` | `graph.py` | Synchronous full run → `MeetingRecord` |
 | `iter_meeting_events()` | `graph.py` | SSE-friendly stream (backend simulation) |
-| `create_initial_state()` | `bootstrap.py` | Seed state from config + persona bundle |
+| `create_initial_state()` | `bootstrap.py` | Load via domain registry or explicit personas |
+| `create_initial_state_from_bundle()` | `bootstrap.py` | Start from `ParticipantBundle` (any app/DB) |
 
 ---
 
 ## 3. Persona node — three internal phases
 
-Implemented in `nodes.py` → `make_persona_node`, with logic split across `reasoning.py`, `proposals.py`, and `facts.py`.
+Implemented in `nodes.py` → `make_persona_node`, with logic in `reasoning.py`, `proposals.py`, `facts.py`, and turn context in `context.py`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │ PHASE A — REASON (hidden, optional 2nd LLM call)                │
-│  • Build user context: transcript, matrix, proposals, facts   │
-│  • LLM → JSON: absorb, compromise_space, stance_shift           │
-│  • Optional: proposal_scores, new_proposal, fact_acceptances      │
+│  • Build user context: transcript, matrix, proposals, facts     │
+│  • Domain prompts: reasoning_system_suffix + reasoning_user     │
+│  • LLM → JSON: absorb, compromise_space, stance_shift, …      │
 ├─────────────────────────────────────────────────────────────────┤
 │ PHASE B — SPEAK (public)                                        │
-│  • LLM → 2–6 sentence public speech ("Yes, and…")             │
+│  • Domain speech_instructions template → 2–6 sentence utterance │
 │  • Fallback: single LLM call if reasoning JSON parse fails      │
 ├─────────────────────────────────────────────────────────────────┤
 │ PHASE C — EXTRACT (post-process, same node)                     │
-│  • Apply proposal_scores / new_proposal → working_proposals     │
-│  • Apply fact_acceptances; extract speech → shared_facts        │
-│  • Dedup facts (embeddings); cap lists                          │
-│  • Append DialogueTurn; update stagnation + rolling summary     │
+│  • proposal_scores / new_proposal → working_proposals           │
+│  • fact_acceptances + domain fact_extractor → shared_facts      │
+│  • Dedup facts; cap lists; append DialogueTurn                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Context assembly** (`_build_user_context` in `nodes.py`)
+**Context assembly** (`context.build_persona_user_context`, called from `nodes._build_user_context`)
 
-- Meeting topic and transcript window (`transcript.py`)
+- Session topic and labels from `SimulationDomain.labels` (e.g. "Cuộc họp" vs "Buổi học")
+- Transcript window (`transcript.py`)
 - Relationship matrix summary for current speaker
-- Active `working_proposals` (if enabled)
-- Colleagues’ `shared_facts` excluding speaker’s own claims (if enabled)
+- Active `working_proposals` / colleagues' `shared_facts` when enabled
 
-**Negotiation** is injected in the reasoning step via `build_reasoning_user_message()` and in persona system prompts from `src/debating/prompts.py` (`# HỒ SƠ ĐÀM PHÁN` block). Profiles live in `MeetingState.negotiation_profiles`, loaded in `bootstrap.py` from persona metadata.
+**Negotiation** — injected in reasoning via `build_reasoning_user_message()`. For enterprise, profiles and prompt blocks come from `src/debating/`; other domains supply `NegotiationProfile` in `ParticipantBundle` or use defaults from `participant_utils.build_negotiation_profiles()`.
 
 ---
 
-## 4. Four upgrade pillars (implemented)
+## 4. Domain packs
 
-### 4.1 Internal monologue (Phase 1)
+**Registry:** `sim_chat/domain.py` — `register_domain()`, `get_domain()`, `load_domain_participants()`.
+
+**Built-in packs** (`sim_chat/domains/`):
+
+| `domain_id` | Label | Loader | Data source |
+|-------------|-------|--------|-------------|
+| `enterprise` | Cuộc họp nội bộ doanh nghiệp | `load_enterprise_participants` | `test_data/*.md` + `src/debating` (or backend DB via `create_initial_state(..., personas=...)`) |
+| `tutoring` | Buổi học nhóm / gia sư | `load_tutoring_demo_participants` | In-memory demo (TUTOR, STUDENT_A, STUDENT_B) |
+| `securities` | Tư vấn đầu tư chứng khoán | `load_securities_demo_participants` | In-memory demo (ADVISOR, ANALYST, RISK, COMPLIANCE) |
+
+Each `SimulationDomain` defines:
+
+| Field | Purpose |
+|-------|---------|
+| `labels` | Session nouns, transcript/relationship labels in turn prompts |
+| `prompts` | orchestrator, secretary, insight, fact extractor, reasoning, speech templates |
+| `topic_role_keywords` | Orchestrator heuristic: route topic to relevant role |
+| `role_aliases` / `display_aliases` | Direct-address detection ("thầy" → TUTOR) |
+| `default_factions` | Relationship matrix grouping |
+| `default_opening_speaker` / `default_key_stakeholders` | Applied by `apply_domain_defaults()` when config fields empty |
+
+**`ParticipantBundle`** — minimal input any application must provide:
+
+```python
+ParticipantBundle(
+    participant_ids=["TUTOR", "STUDENT_A"],
+    persona_names={"TUTOR": "Cô Lan", "STUDENT_A": "Minh"},
+    system_prompts={"TUTOR": "...", "STUDENT_A": "..."},
+    relationship_matrix=matrix,
+    negotiation_profiles={},  # optional
+)
+```
+
+### Starting a run
+
+**Option A — registered domain loader:**
+
+```python
+from sim_chat import MeetingConfig, create_initial_state, run_meeting
+
+config = MeetingConfig(
+    domain_id="tutoring",
+    meeting_topic="Phương trình bậc hai",
+    max_turns=12,
+    use_mock=True,
+)
+record = run_meeting(config)
+```
+
+**Option B — bring your own participants (CMS, DB, API):**
+
+```python
+from sim_chat import MeetingConfig, ParticipantBundle, create_initial_state_from_bundle, run_meeting
+
+bundle = ParticipantBundle(...)  # built from your app
+config = MeetingConfig(domain_id="tutoring", meeting_topic="Đạo hàm")
+state = create_initial_state_from_bundle(config, bundle)
+record = run_meeting(config, initial_state=state)
+```
+
+**Option C — enterprise product (current backend):**
+
+Backend passes DB-built `system_prompts`, `persona_names`, and `personas` to `create_initial_state()`. Default `domain_id="enterprise"`. No change required for existing Vienovo deployments.
+
+### Adding a new domain
+
+1. Create `sim_chat/domains/my_app.py` — define `SimulationDomain` + optional `load_*_participants`.
+2. Register in `sim_chat/domains/__init__.py` via `register_domain(...)`.
+3. Set `MeetingConfig.domain_id = "my_app"` or pass `ParticipantBundle` directly.
+4. Add tests in `sim_chat/tests/test_domain.py` (mock run with `use_mock=True`).
+
+Core graph behaviour (conflict scoring, proposals, facts, stagnation) is unchanged; only prompts, labels, and role metadata differ.
+
+---
+
+## 5. Four upgrade pillars (implemented)
+
+### 5.1 Internal monologue
 
 | Item | Detail |
 |------|--------|
 | **Module** | `reasoning.py` |
 | **Models** | `InternalMonologue`, `HiddenTurn`, `ReasoningResult` |
 | **Flag** | `enable_internal_monologue` (default `True`) |
-| **Flow** | Reason JSON → speech prompt with `[ABSORB]` / `[COMPROMISE SPACE]` |
+| **Prompts** | `domain.prompts.reasoning_system_suffix`, `reasoning_user_suffix`, `speech_instructions` |
 | **Persist** | `metadata.hidden_turns`, `last_monologue` |
 | **SSE** | `monologue` when `monologue_in_sse=True` |
 
-Parse failure → fallback to legacy single-shot speech (no hidden turn recorded).
+Parse failure → single-shot speech fallback (no hidden turn recorded).
 
-### 4.2 Negotiation profile (Phase 2)
+### 5.2 Negotiation profile
 
 | Item | Detail |
 |------|--------|
-| **Module** | `src/debating/negotiation.py`, `prompts.py`, `loaders.py` |
 | **Model** | `NegotiationProfile` in `sim_chat/models.py` |
-| **Storage** | PostgreSQL `personas.metadata.negotiation` (JSONB) |
+| **Enterprise** | `src/debating/negotiation.py`, persona metadata in PostgreSQL |
 | **Fields** | `compromise_threshold`, `min_interest_retention`, `director_sensitivity`, `deadlock_tolerance` |
-| **Dynamic** | `enable_dynamic_compromise` raises effective threshold with `stagnation_score` |
+| **Dynamic** | `enable_dynamic_compromise` + `stagnation_score` |
+| **Loader** | `participant_utils.build_negotiation_profiles()` |
 
-Role defaults (e.g. CFO 0.25, CEO 0.70) applied at load time; editable in admin UI.
-
-### 4.3 Shared blackboard — `working_proposals` (Phase 3)
+### 5.3 Working proposals blackboard
 
 | Item | Detail |
 |------|--------|
 | **Module** | `proposals.py` |
-| **Models** | `WorkingProposal`, `ProposalApproval`, `ProposalScore`, `NewProposalDraft` |
 | **Flag** | `enable_working_proposals` (default `True`) |
-| **Update** | After each turn: score proposals in reasoning, add/refine proposals, recompute `aggregate_score`, cap at `max_active_proposals` |
+| **Update** | After each turn via reasoning JSON |
 | **Consensus** | `proposal_consensus_mode`: `secretary` \| `aggregate` \| `both` |
-| **Secretary** | Sees proposals JSON; may declare consensus when aggregate ≥ threshold + stakeholder approval |
-| **Persist / SSE** | `metadata.working_proposals`, SSE `proposal_update` |
-| **UI** | `MeetingSimulationTab` — active proposals panel |
+| **UI** | `MeetingSimulationTab` — proposals panel (enterprise product) |
 
-State field is **replaced in full** each persona turn (not `operator.add`), because approvals mutate in place.
+State field **replaced in full** each turn (not `operator.add`).
 
-### 4.4 Cross-agent facts — `shared_facts` (Phase 4)
+### 5.4 Cross-agent shared facts
 
 | Item | Detail |
 |------|--------|
-| **Module** | `facts.py`, dedup in `embeddings.py` (`is_duplicate_fact`) |
-| **Models** | `SharedFact`, `FactDraft`, `FactAcceptance` |
+| **Module** | `facts.py`, dedup in `embeddings.py` |
 | **Flag** | `enable_shared_facts` (default `True`) |
-| **Extract** | LLM fact extractor on public speech; heuristic fallback (`infer_facts_from_speech`) |
-| **Dedup** | Bag-of-words cosine similarity ≥ `fact_dedup_similarity_threshold` |
-| **Cap** | `max_shared_facts`, keeps newest by `turn_index` |
-| **Reasoning** | `fact_acceptances` in reasoning JSON; injected block for colleagues’ facts |
-| **Persist / SSE** | `metadata.shared_facts`, SSE `fact_update` |
-| **UI** | `MeetingSimulationTab` — shared facts panel |
-
-Episodic meeting memory only — not vector RAG / Pinecone.
+| **Extract** | Domain `fact_extractor_system` prompt + heuristic fallback |
+| **Scope** | Episodic session memory — not vector RAG |
 
 ---
 
-## 5. MeetingState schema
+## 6. MeetingState schema
 
 LangGraph `MeetingState` (`models.py`):
 
 | Field | Reducer | Description |
 |-------|---------|-------------|
 | `messages` | `operator.add` | Public `DialogueTurn` list |
-| `hidden_turns` | `operator.add` | Internal monologues per turn |
+| `hidden_turns` | `operator.add` | Internal monologues |
 | `working_proposals` | replace | Shared compromise proposals |
 | `shared_facts` | replace | Cross-agent factual claims |
 | `relationship_matrix` | replace | Conflicts, factions, optional astrology |
-| `negotiation_profiles` | replace | Per-participant `NegotiationProfile` |
-| `last_monologue` | replace | Latest monologue per `speaker_id` |
-| `secretary_verdict` | replace | Last secretary JSON verdict |
-| `transcript_summary` | replace | Rolling summary for long meetings |
-| `current_speaker`, `last_speaker` | replace | Orchestration |
-| `loop_count`, `turn_index`, `stagnation_score` | replace | Progress metrics |
-| `turns_since_secretary` | replace | Secretary scheduling |
-| `config`, `prompts`, `persona_names`, `participant_ids` | replace | Static for run |
+| `negotiation_profiles` | replace | Per-participant profiles |
+| `config` | replace | Includes `domain_id` |
+| `prompts`, `persona_names`, `participant_ids` | replace | Static for run |
 | `terminated`, `termination_reason` | replace | Set in `finalize` |
 
 ---
 
-## 6. Orchestrator
+## 7. Orchestrator
 
 **File:** `orchestrator.py`
 
 Hybrid selection:
 
-1. **Direct address** — if last turn names a participant, honor it.
-2. **Conflict-first scoring** — affinity, conflict weight, faction opposition, topic keywords.
-3. **LLM fallback** — when heuristic gap is small; JSON `next_speaker`.
+1. **Direct address** — honour named participant (uses domain `role_aliases` / `display_aliases`).
+2. **Conflict-first scoring** — affinity, conflict weight, faction opposition, domain `topic_role_keywords`.
+3. **LLM fallback** — `domain.prompts.orchestrator_system`.
 
-Uses truncated transcript (`transcript_window_orchestrator`) and relationship matrix. Does **not** mutate proposals or facts.
-
----
-
-## 7. Stopping criteria
-
-**File:** `stopping.py`
-
-| Criterion | Function | Notes |
-|-----------|----------|-------|
-| Max rounds / turns | `check_max_rounds`, `check_max_turns` | `max_turns` overrides round-based limit |
-| Consensus | `check_consensus` | Proposal aggregate and/or secretary verdict |
-| Stagnation | `check_stagnation` | Multi-signal via `embeddings.compute_stagnation_signals` |
-
-**Routing** (`route_after_turn`): evaluate termination first → else secretary every `consensus_check_interval` turns → else orchestrator.
-
-**Stagnation signals** (`embeddings.py`): consecutive similarity, max similarity to prior turns, novel token ratio, substantive claim overlap (numbers, budget keywords, etc.).
+Uses `get_domain(state["config"].domain_id)` for prompts and keywords. Does **not** mutate proposals or facts.
 
 ---
 
-## 8. Secretary node
+## 8. Secretary, stopping, insight
 
-**File:** `nodes.py` → `make_secretary_node`
+**Secretary** (`nodes.make_secretary_node`) — `domain.prompts.secretary_system`; evaluates transcript + optional `working_proposals`. Returns `SecretaryVerdict`.
 
-LLM evaluates transcript (+ `working_proposals` JSON when enabled). Returns `SecretaryVerdict`:
+**Stopping** (`stopping.py`) — max rounds/turns, consensus (secretary + proposal aggregate), stagnation (multi-signal via `embeddings.py`).
 
-- `consensus_score`, `has_consensus`, `key_stakeholder_approval`, `summary`
+**Insight** (`insight.py`) — post-run report using `domain.prompts.insight_system`.
 
-JSON parse failure → `heuristic_consensus()` keyword fallback.
-
-When `proposal_consensus_mode` is `aggregate` or `both`, `check_proposal_consensus()` in `proposals.py` can terminate without secretary agreement on transcript alone.
+**Private chat** (`private_chat.py`) — 1-1 Q&A after session; uses persona system prompt + full transcript + relationship matrix.
 
 ---
 
-## 9. MeetingConfig (feature flags & tunables)
+## 9. MeetingConfig
 
 **File:** `config.py`
 
-Backend maps meeting row `config` JSON → `MeetingConfig` (unknown keys stripped in `simulation_service.py`).
-
 | Group | Keys |
 |-------|------|
-| **Lifecycle** | `max_rounds`, `max_turns`, `opening_speaker`, `participant_ids`, `key_stakeholders` |
+| **Domain** | `domain_id` (default `"enterprise"`) |
+| **Lifecycle** | `meeting_topic`, `max_rounds`, `max_turns`, `opening_speaker`, `participant_ids`, `key_stakeholders` |
 | **Stopping** | `consensus_threshold`, `consensus_check_interval`, `stagnation_*`, `enable_consensus_check`, `enable_stagnation_check` |
 | **Transcript** | `transcript_window_*`, `enable_rolling_summary`, `rolling_summary_*` |
-| **LLM** | `llm_provider`, `llm_model`, `use_mock`, `max_output_tokens`, `reasoning_max_tokens`, `speech_max_tokens` |
-| **Pillar 1** | `enable_internal_monologue`, `monologue_in_sse` |
-| **Pillar 2** | `enable_dynamic_compromise` (+ profiles in state, not config) |
-| **Pillar 3** | `enable_working_proposals`, `proposal_consensus_mode`, `max_active_proposals` |
-| **Pillar 4** | `enable_shared_facts`, `fact_extraction_min_confidence`, `max_shared_facts`, `fact_dedup_similarity_threshold` |
+| **LLM** | `llm_provider`, `llm_model`, `use_mock`, `reasoning_max_tokens`, `speech_max_tokens` |
+| **Pillars** | `enable_internal_monologue`, `enable_working_proposals`, `enable_shared_facts`, `enable_dynamic_compromise`, … |
 
-Disable a pillar → behavior reverts for that concern only (e.g. `enable_internal_monologue=False` → one LLM call per turn).
+Empty `opening_speaker` / `key_stakeholders` → filled from domain defaults via `apply_domain_defaults()`.
+
+Backend maps meeting row `config` JSON → `MeetingConfig` (`simulation_service._build_meeting_config`).
 
 ---
 
@@ -257,111 +333,65 @@ Disable a pillar → behavior reverts for that concern only (e.g. `enable_intern
 | `fact_update` | `shared_facts` changed |
 | `secretary` | New verdict |
 | `status` | `turn_index`, `loop_count`, `stagnation_score` |
-| `completed` | Final `MeetingRecord` payload |
-
-Frontend: `useMeetingStream.ts` handles `turn`, `proposal_update`, `fact_update`, `completed`, etc.
+| `completed` | Final `MeetingRecord` |
 
 ---
 
-## 11. Persistence & artifacts
-
-**`MeetingRecord`** (post-run):
-
-| Field | Content |
-|-------|---------|
-| `messages` | Public transcript |
-| `config` | Snapshot of run config |
-| `relationship_matrix` | Matrix at end |
-| `termination_reason` | `max_rounds` \| `consensus` \| `stagnation` \| `manual` |
-| `insight_report` | Filled by `insight.generate_insight_report()` in backend |
-| `metadata` | See below |
-
-**`metadata` keys**
-
-```json
-{
-  "participant_ids": ["CEO", "CFO", "..."],
-  "secretary_verdict": { "...": "..." },
-  "transcript_summary": "...",
-  "summary_through_turn": 12,
-  "hidden_turns": [ { "speaker_id", "turn_index", "monologue" } ],
-  "working_proposals": [ { "id", "title", "aggregate_score", "approvals", ... } ],
-  "shared_facts": [ { "id", "fact", "source_speaker_id", "turn_index", ... } ]
-}
-```
-
-**Files:** `persistence.py` (load/save JSON records), `export.py` (batch export examples).
-
----
-
-## 12. Post-simulation
-
-### Insight report
-
-**File:** `insight.py`
-
-LLM strategic summary from transcript + termination context. Invoked by backend after graph completes.
-
-### Private 1-1 chat
-
-**File:** `private_chat.py`
-
-`create_session_from_record()` builds an isolated session:
-
-- Persona system prompt + full meeting transcript + relationship matrix (+ optional astrology)
-- `PrivateChatSession.chat()` — user Q&A with persona about the meeting
-
-Wired through `backend/app/services/chat_service.py` and meeting Chat tab.
-
----
-
-## 13. Module map
+## 11. Module map
 
 ```
 sim_chat/
-├── config.py           MeetingConfig
-├── models.py           Pydantic models + MeetingState TypedDict
-├── bootstrap.py        create_initial_state(), persona/prompt loading
-├── graph.py            StateGraph compile, run_meeting, SSE iterator
-├── nodes.py            orchestrator/persona/secretary/finalize nodes
-├── orchestrator.py     Speaker selection (heuristic + LLM)
-├── reasoning.py        Monologue prompts, JSON parse, generate_persona_speech
-├── proposals.py        Working proposals blackboard
-├── facts.py            Shared fact extract, dedup, context formatting
-├── stopping.py         Termination checks + conditional routing
-├── embeddings.py       Stagnation signals + fact dedup similarity
-├── transcript.py       Context windows + rolling summary
-├── relationship.py     Matrix helpers, role aliases
-├── llm.py              OpenAI / Gemini / MockLLM providers
-├── insight.py          Post-meeting insight report
-├── private_chat.py     1-1 interrogation sessions
-├── persistence.py      MeetingRecord I/O
-├── export.py           Export utilities
-├── examples/           CLI runners (conflict, long debate, stagnation)
-├── tests/              Unit tests (42+ cases)
+├── domain.py              SimulationDomain, ParticipantBundle, registry
+├── context.py             Domain-aware persona turn context
+├── participant_utils.py   resolve IDs, negotiation profiles
+├── config.py              MeetingConfig (+ domain_id)
+├── models.py              Pydantic models + MeetingState
+├── bootstrap.py           create_initial_state*, apply_domain_defaults
+├── domains/
+│   ├── __init__.py        register_builtin_domains()
+│   ├── enterprise.py      Vienovo / corporate meeting pack
+│   ├── tutoring.py        Tutoring demo pack
+│   └── securities.py      Investment advisory demo pack
+├── graph.py               StateGraph, run_meeting, SSE
+├── nodes.py               orchestrator / persona / secretary / finalize
+├── orchestrator.py        Speaker selection (heuristic + LLM)
+├── reasoning.py           Monologue → speech (domain prompts)
+├── proposals.py           Working proposals blackboard
+├── facts.py               Shared facts (domain extractor prompt)
+├── stopping.py            Termination + routing
+├── embeddings.py          Stagnation + fact dedup
+├── transcript.py          Context windows + rolling summary
+├── relationship.py        Matrix build/filter (domain aliases)
+├── llm.py                 OpenAI / Gemini / MockLLM
+├── insight.py             Post-session report (domain prompt)
+├── private_chat.py        1-1 follow-up chat
+├── persistence.py         MeetingRecord I/O
+├── export.py              Export utilities
+├── examples/              CLI runners
+├── tests/                 62+ unit/integration tests
 └── docs/
-    └── architecture.md   (this file)
+    └── architecture.md    (this file)
 
-src/debating/
-├── prompts.py          System prompt assembly (+ negotiation block)
-├── negotiation.py      NegotiationProfile, role defaults, prompt formatting
-├── loaders.py          Persona markdown → models + negotiation metadata
-└── models.py           Domain persona types
+src/debating/              Enterprise vertical only
+├── prompts.py             System prompt assembly
+├── negotiation.py         NegotiationProfile defaults
+├── loaders.py             Markdown → Persona / CompanyProfile
+└── models.py
 
-backend/app/services/
-├── simulation_service.py   Meeting run + SSE + insight
-├── chat_service.py         Private chat sessions
-├── persona_service.py      Negotiation in personas.metadata
-└── prompt_service.py       Rebuild system prompts from DB
+backend/app/services/      Current enterprise product
+├── simulation_service.py
+├── chat_service.py
+├── persona_service.py
+└── prompt_service.py
 ```
 
 ---
 
-## 14. LLM call budget per persona turn
+## 12. LLM call budget per persona turn
 
 | Step | Calls | Skipped when |
 |------|-------|--------------|
-| Orchestrator | 0–1 | Heuristic shortcut confident |
+| Orchestrator | 0–1 | Conflict shortcut confident |
 | Reason | 0–1 | `enable_internal_monologue=False` |
 | Speak | 1 | Always (or only call if monologue off) |
 | Fact extract | 0–1 | `enable_shared_facts=False` |
@@ -372,7 +402,7 @@ Typical turn with all flags on: **2–3 calls** (reason + speak + fact extract).
 
 ---
 
-## 15. Testing
+## 13. Testing
 
 ```bash
 python3 -m pytest sim_chat/tests/ -q
@@ -380,56 +410,56 @@ python3 -m pytest sim_chat/tests/ -q
 
 | File | Coverage |
 |------|----------|
+| `test_domain.py` | Domain registry, tutoring mock end-to-end |
 | `test_reasoning.py` | JSON parse, speech generation, fallback |
-| `test_negotiation.py` | Profiles, dynamic threshold, prompt block |
-| `test_proposals.py` | Merge, aggregate, consensus, cap |
-| `test_facts.py` | Extract, dedup, acceptances, context injection |
+| `test_negotiation.py` | Profiles, dynamic threshold |
+| `test_proposals.py` | Merge, aggregate, consensus |
+| `test_facts.py` | Extract, dedup, acceptances |
 | `test_stagnation.py` | Stagnation signals |
 | `test_orchestrator.py` | Speaker selection |
-| `test_insight.py` | Insight prompt assembly |
+| `test_insight.py` | Insight assembly |
+| `test_graph.py` | Full graph + SSE |
 
-Dry-run without API keys: `MeetingConfig(use_mock=True)` or backend `use_mock` provider.
+Dry-run without API keys: `MeetingConfig(use_mock=True)`.
 
 ---
 
-## 16. Implementation status (vs original spec)
+## 14. Implementation status
 
 | Capability | Status |
 |------------|--------|
 | LangGraph StateGraph + centralized state | Done |
-| Orchestrator (non-LLM-routed graph) | Done |
-| Relationship matrix + optional astrology | Done |
-| Stagnation (embedding-like similarity) | Done |
-| Secretary consensus sub-agent | Done |
+| Multi-domain packs + ParticipantBundle API | Done |
+| Orchestrator conflict-first selection | Done |
 | Internal monologue (reason → speak) | Done |
-| Negotiation profile per persona | Done |
+| Negotiation profile per participant | Done |
 | Working proposals blackboard | Done |
 | Cross-agent shared facts | Done |
-| SSE streaming to frontend | Done |
-| Proposals UI panel | Done |
-| Facts UI panel | Done |
-| Post-meeting insight | Done |
-| Private 1-1 chat | Done |
+| SSE streaming | Done |
+| Post-session insight + private chat | Done |
+| Enterprise product (backend/frontend) | Done |
+| `domain_id` in meeting wizard UI | Not yet — config JSON only |
 | Vector RAG for persona KB | Out of scope |
 | Dynamic matrix update each turn | Out of scope |
 
 ---
 
-## 17. Local development
+## 15. Local development
 
 | Service | Default |
 |---------|---------|
-| Postgres | `localhost:5432/debating` (Docker Compose) |
+| Postgres | `localhost:5432/debating` |
 | Backend | `uvicorn app.main:app --reload --port 8000` |
 | Frontend | Vite `:5173`, proxies `/api` → backend |
 
-After changing `sim_chat/`, restart the backend. Meeting config JSON on each meeting row controls pillar flags for that run.
+After changing `sim_chat/`, restart the backend. Set `domain_id` and pillar flags in meeting `config` JSON.
 
 ---
 
-## 18. Extension guidelines
+## 16. Extension guidelines
 
-- **New state fields** — prefer replace-in-place patches from nodes when mutating nested structures; use `operator.add` only for append-only logs (`messages`, `hidden_turns`).
-- **New LLM steps** — add feature flags to `MeetingConfig`; provide MockLLM branch in `llm.py` for tests.
-- **Consensus** — extend `check_consensus` and secretary prompt together to avoid divergent termination behavior.
-- **Token pressure** — cap and summarize `working_proposals` / `shared_facts` before injecting into persona context; reuse `transcript.py` rolling summary pattern for long meetings.
+- **New vertical** — add domain pack under `sim_chat/domains/`, register, test with `use_mock=True`.
+- **New state fields** — use `operator.add` only for append-only logs (`messages`, `hidden_turns`); replace-in-place for mutable structures.
+- **New LLM steps** — add `MeetingConfig` flag + domain prompt field + MockLLM branch.
+- **Consensus** — keep secretary prompt and `check_consensus` in sync per domain.
+- **Token pressure** — cap/summarize blackboard data before persona context injection.

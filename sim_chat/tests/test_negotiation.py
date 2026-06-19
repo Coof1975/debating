@@ -69,6 +69,7 @@ def test_reasoning_user_message_includes_negotiation() -> None:
     profile = default_negotiation_for_role("CFO")
     message = build_reasoning_user_message(
         "[Cuộc họp: test]",
+        config=MeetingConfig(),
         negotiation=profile,
         effective_threshold=0.3,
     )

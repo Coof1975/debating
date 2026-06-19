@@ -57,10 +57,10 @@ export function MeetingHubPage() {
   }, [meetingId, loadMeeting])
 
   useEffect(() => {
-    if (!isStreaming && stream.terminationReason && meetingId) {
+    if (stream.insightReport && meetingId) {
       loadMeeting()
     }
-  }, [isStreaming, stream.terminationReason, meetingId, loadMeeting])
+  }, [stream.insightReport, meetingId, loadMeeting])
 
   const activeProvider = useMemo(
     () => providers.find((p) => p.id === providerId),
@@ -80,7 +80,7 @@ export function MeetingHubPage() {
   const sharedFacts: SharedFact[] = isStreaming
     ? stream.sharedFacts
     : ((meeting?.record?.metadata?.shared_facts as SharedFact[] | undefined) ?? [])
-  const insight = isStreaming ? stream.insightReport : (meeting?.insight_report ?? '')
+  const insight = stream.insightReport || meeting?.insight_report || ''
   const displayError = error ?? stream.error ?? meeting?.error_message ?? null
 
   async function handleStart() {

@@ -138,7 +138,8 @@ export function streamMeeting(
     try {
       const event = JSON.parse(message.data) as { type: string; data: Record<string, unknown> }
       onEvent(event)
-      if (event.type === 'completed' || event.type === 'error') {
+      // Insight is emitted after "completed"; closing early drops the report.
+      if (event.type === 'insight' || event.type === 'error') {
         source.close()
       }
     } catch (err) {

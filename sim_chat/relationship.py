@@ -31,13 +31,14 @@ DEFAULT_FACTIONS: dict[str, list[str]] = {
 }
 
 
-def _normalize_role(label: str) -> str | None:
+def _normalize_role(label: str, role_aliases: dict[str, str] | None = None) -> str | None:
+    aliases = role_aliases if role_aliases is not None else ROLE_ALIASES
     cleaned = re.sub(r"[^\w\s&/-]", "", label.lower()).strip()
-    for alias, role in ROLE_ALIASES.items():
+    for alias, role in aliases.items():
         if alias in cleaned:
             return role
     upper = label.strip().upper()
-    if upper in {"CEO", "CFO", "MARKETING", "PRODUCT", "SALE"}:
+    if upper in set(aliases.values()):
         return upper
     return None
 
@@ -122,9 +123,13 @@ def build_relationship_matrix(
     personas: dict[str, "Persona"],
     *,
     config: MeetingConfig | None = None,
+    role_aliases: dict[str, str] | None = None,
+    default_factions: dict[str, list[str]] | None = None,
 ) -> RelationshipMatrix:
     """Construct the initial relationship matrix from persona relationship sections."""
     config = config or MeetingConfig()
+    aliases = role_aliases if role_aliases is not None else ROLE_ALIASES
+    factions_source = default_factions if default_factions is not None else DEFAULT_FACTIONS
     participant_ids = list(personas.keys())
     edges: dict[str, dict[str, RelationshipEdge]] = {
         pid: {} for pid in participant_ids
@@ -135,12 +140,12 @@ def build_relationship_matrix(
         rel_section = persona.sections.get("relationships")
         rel_content = rel_section.content if rel_section else ""
         for target_label, note in _parse_relationship_lines(rel_content):
-            target_id = _normalize_role(target_label)
+            target_id = _normalize_role(target_label, aliases)
             if not target_id or target_id == persona_id or target_id not in participant_ids:
                 continue
             affinity, conflict = _infer_affinity(note)
             faction = None
-            for name, members in DEFAULT_FACTIONS.items():
+            for name, members in factions_source.items():
                 if persona_id in members and target_id in members:
                     faction = name
                     break
@@ -179,7 +184,7 @@ def build_relationship_matrix(
 
     factions = {
         name: [pid for pid in members if pid in participant_ids]
-        for name, members in DEFAULT_FACTIONS.items()
+        for name, members in factions_source.items()
         if any(pid in participant_ids for pid in members)
     }
 

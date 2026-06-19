@@ -574,10 +574,26 @@ So sánh `enable_internal_monologue=False` vs `True` trên cùng meeting topic:
 
 ## 11. Liên kết tài liệu
 
-- Kiến trúc gốc: `sim_chat/docs/architecture.md`
-- Implementation plan sản phẩm (admin/meeting/chat): `docs/IMPLEMENTATION_PLAN.md`
-- Persona seed: `test_data/*_persona.md`
+- Kiến trúc engine (cập nhật multi-domain): [`sim_chat/docs/architecture.md`](../sim_chat/docs/architecture.md)
+- Quick start engine: [`sim_chat/README.md`](../sim_chat/README.md)
+- Implementation plan sản phẩm (admin/meeting/chat): [`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+- Persona seed (enterprise): `test_data/*_persona.md`
 
 ---
 
-*Cập nhật: 2026-06-18 — Upgrade 1: Multi-Stage Reasoning*
+## 12. Addendum — trạng thái sau triển khai (2026-06)
+
+Tất cả Phase 1–4 trong tài liệu này đã được triển khai. Ngoài ra engine đã được **tách domain**:
+
+| Thành phần mới | Mô tả |
+|----------------|--------|
+| `sim_chat/domain.py` | `SimulationDomain`, `ParticipantBundle`, registry |
+| `sim_chat/domains/*` | Enterprise (default), tutoring, securities demo packs |
+| `MeetingConfig.domain_id` | Chọn vertical; prompts orchestrator/secretary/insight/reasoning theo domain |
+| `create_initial_state_from_bundle()` | App bất kỳ inject participants từ DB/CMS |
+
+App Vienovo hiện tại vẫn dùng `domain_id="enterprise"` (mặc định) + prompts từ PostgreSQL. Chi tiết: **§4 Domain packs** trong `sim_chat/docs/architecture.md`.
+
+---
+
+*Cập nhật: 2026-06-18 — Upgrade 1: Multi-Stage Reasoning · addendum 2026-06-19*

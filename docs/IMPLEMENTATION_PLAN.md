@@ -636,9 +636,9 @@ Merge tuần tự 0 → 1 → 2 → 3; phase 4 có thể tách PR nhỏ independ
 ## 9. Tài liệu liên quan
 
 - Thiết kế UI chi tiết: thảo luận trong chat (IA, wireframe, tab matrix)
-- Simulation engine: `sim_chat/README.md` (nếu có) hoặc `sim_chat/graph.py`
+- Simulation engine: [`sim_chat/README.md`](../sim_chat/README.md) · kiến trúc đầy đủ [`sim_chat/docs/architecture.md`](../sim_chat/docs/architecture.md) (multi-domain)
 - Seed flow: `scripts/seed.py`, `backend/scripts/seed_db.py`
 
 ---
 
-*Cập nhật lần cuối: 2026-06-17*
+*Cập nhật lần cuối: 2026-06-19*

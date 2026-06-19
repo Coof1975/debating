@@ -46,22 +46,40 @@ def test_parse_monologue_invalid_returns_none() -> None:
 
 
 def test_build_reasoning_user_message_includes_marker() -> None:
-    message = build_reasoning_user_message("[Cuộc họp: test]")
+    config = MeetingConfig()
+    message = build_reasoning_user_message("[Cuộc họp: test]", config=config)
     assert "[INTERNAL REASONING]" in message
 
 
 def test_build_speech_user_message_includes_monologue() -> None:
+    config = MeetingConfig()
     monologue = InternalMonologue(
         absorb="Đồng ý một phần.",
         compromise_space="Chia pha.",
         stance_shift=0.2,
         relationship_lens="Hơi bực với CFO nhưng phải giữ mặt.",
     )
-    message = build_speech_user_message("[Cuộc họp: test]", monologue)
+    message = build_speech_user_message("[Cuộc họp: test]", monologue, config=config)
     assert "[ABSORB]" in message
     assert "[RELATIONSHIP LENS]" in message
     assert "Đồng ý một phần." in message
     assert "Hơi bực" in message
+
+
+def test_build_speech_user_message_stagnation_reminder() -> None:
+    config = MeetingConfig()
+    monologue = InternalMonologue(
+        absorb="a",
+        compromise_space="b",
+        stance_shift=0.0,
+    )
+    message = build_speech_user_message(
+        "[Cuộc họp: test]",
+        monologue,
+        config=config,
+        stagnation_score=2,
+    )
+    assert "[NHẮC LẠI]" in message
 
 
 def test_generate_persona_speech_disabled_uses_single_call() -> None:

@@ -26,7 +26,11 @@ def _meeting_rules(meeting_topic: str | None = None) -> str:
 - Luận điểm phải dựa trên số liệu và bối cảnh công ty được cung cấp, kết hợp với góc nhìn và động cơ riêng của nhân vật.
 - Có thể phản biện, bảo vệ lợi ích bộ phận, và xung đột với các thành viên khác theo ma trận quan hệ.
 - Không phá vỡ nhân vật: không nói như AI, không tóm tắt meta, không liệt kê toàn bộ prompt.
-- Mỗi lượt phát biểu ngắn gọn, súc tích (2–6 câu), phù hợp chat họp thực tế. 
+- Mỗi lượt phát biểu ngắn gọn, súc tích (2–6 câu), phù hợp chat họp thực tế.
+- Nói thẳng vào vấn đề: ưu tiên số liệu, quan điểm, phản biện — tránh câu mở đầu lịch sự/khách sáo (VD: "Cảm ơn anh/chị", "Tôi hiểu quan điểm của...", "Để tôi bổ sung thêm...", "Tôi xin lên tiếng", "Cho phép tôi").
+- Không lặp lại cùng luận điểm/con số ở các lượt sau — mỗi lượt phải phản ứng với ý mới nhất hoặc đưa điều kiện/counter-proposal khác.
+- Bắt buộc viện dẫn ít nhất 1 con số hoặc sự kiện cụ thể từ bối cảnh công ty/hồ sơ nhân vật (%, tỷ VNĐ, tấn/tháng, deadline, tên NPP/kênh) — không nói chung chung.
+- Tranh luận gay gắt nhưng chuyên môn: bảo vệ lợi ích bộ phận, chỉ ra rủi ro cụ thể của phương án đối phương, đề xuất phương án thay thế có số đo.
 """
 
 
@@ -55,7 +59,7 @@ def _llm_instructions_text(persona: Persona) -> str:
 
 
 def _format_persona_sections(sections: dict[str, PersonaSection]) -> str:
-    order = ["identity", "core_logic", "psychology", "business_context", "relationships"]
+    order = ["identity", "core_logic", "psychology", "business_context", "debate_ammo", "relationships"]
     blocks: list[str] = []
     seen: set[str] = set()
 
@@ -134,7 +138,7 @@ Dưới đây là các dữ kiện công ty mà bạn biết và có thể việ
 {_meeting_rules(meeting_topic)}
 
 # HƯỚNG DẪN HÀNH VI CHO LLM
-{_llm_instructions_text(persona) or "Giữ đúng tính cách, ưu tiên lợi ích bộ phận và ma trận quan hệ đã mô tả."}
+{_llm_instructions_text(persona) or "Giữ đúng tính cách, ưu tiên lợi ích bộ phận và ma trận quan hệ đã mô tả. Nói thẳng vào vấn đề, tránh câu mở đầu lịch sự/khách sáo."}
 """
 
     return PersonaPrompt(

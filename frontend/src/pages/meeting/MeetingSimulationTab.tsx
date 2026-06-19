@@ -1,7 +1,13 @@
+import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { InsightView } from '../../components/InsightView'
 import { TranscriptView } from '../../components/TranscriptView'
+import {
+  buildFollowUpMeetingPrefill,
+  extractNextStepsSection,
+} from '../../lib/insightFollowUp'
 import type { SharedFact } from '../../types'
+import type { NewMeetingLocationState } from '../../types/navigation'
 import { canAccessSimulationTab, useMeetingHub } from './MeetingHubContext'
 
 const CATEGORY_STYLES: Record<string, string> = {
@@ -47,6 +53,24 @@ export function MeetingSimulationTab() {
     setShowRerun,
     handleRerun,
   } = useMeetingHub()
+
+  const nextStepsSection = useMemo(() => extractNextStepsSection(insight), [insight])
+  const followUpNavigation = useMemo((): NewMeetingLocationState | null => {
+    if (!nextStepsSection || meeting.status !== 'completed') return null
+    return {
+      followUpFrom: {
+        meetingId,
+        priorTopic: meeting.topic,
+      },
+      prefill: buildFollowUpMeetingPrefill({
+        meetingId,
+        priorTopic: meeting.topic,
+        nextSteps: nextStepsSection,
+        participantIds: meeting.participant_ids,
+        hostId: meeting.host_id,
+      }),
+    }
+  }, [meeting, meetingId, nextStepsSection])
 
   if (!canAccessSimulationTab(meeting.status)) {
     return (
@@ -235,10 +259,24 @@ export function MeetingSimulationTab() {
           )}
         </div>
         <div>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Analysis
-          </h2>
-          <InsightView insight={insight} isLive={isStreaming && stream.isLive} />
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+              Analysis
+            </h2>
+            {followUpNavigation && (
+              <Link
+                to="/meetings/new"
+                state={followUpNavigation}
+                className="btn-secondary w-full text-center text-xs sm:w-auto"
+              >
+                Tạo meeting tiếp theo
+              </Link>
+            )}
+          </div>
+          <InsightView
+            insight={insight}
+            isLive={isStreaming && !insight && !stream.error}
+          />
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .domain import get_domain
 from .facts import format_shared_facts_for_insight
 from .llm import LLMProvider, MockLLMProvider
 from .models import (
@@ -17,43 +18,6 @@ from .proposals import (
     format_proposals_for_insight,
     stakeholder_approved_proposal,
 )
-
-INSIGHT_SYSTEM_PROMPT = """\
-Bạn là cố vấn chiến lược phân tích biên bản cuộc họp nội bộ doanh nghiệp.
-
-Viết báo cáo insight ngắn gọn bằng tiếng Việt, BÁM SÁT nội dung biên bản thực tế.
-Không lặp lại mẫu chung chung; mọi nhận định phải dựa trên lượt phát biểu cụ thể.
-
-Biên bản có thể gồm hai lớp cho mỗi lượt:
-- **[Nội bộ]**: suy nghĩ ẩn trước khi phát biểu (absorb, compromise_space, stance_shift)
-- **[Công khai]**: lời nói trong cuộc họp
-
-Ngoài biên bản, có thể có dữ liệu bảng đen đã cấu trúc:
-- **working_proposals**: đề xuất dung hòa với điểm chung (aggregate_score) và approvals từng persona
-- **shared_facts**: số liệu/sự kiện factual kèm phản hồi chấp nhận/bác bỏ của từng persona
-
-Dùng suy nghĩ nội bộ để suy luận động cơ, lợi ích bộ phận, và ý định thật của từng persona.
-So sánh nội bộ vs công khai khi chúng lệch nhau (ví dụ: nội bộ sẵn sàng nhún nhường nhưng nói cứng).
-Khi có working_proposals hoặc shared_facts, ưu tiên chúng cho phần đồng thuận/rủi ro/bước tiếp
-thay vì suy đoán lại từ lời nói — trừ khi blackboard mâu thuẫn rõ với biên bản.
-
-Cấu trúc bắt buộc:
-1. Lý do kết thúc cuộc họp — giải thích vì sao cuộc trao đổi dừng lại, dựa trên
-   "Thông tin kết thúc" trong biên bản (đồng thuận / lặp lại / hết vòng / dừng thủ công)
-   và chỉ ra bằng chứng cụ thể từ các lượt phát biểu cuối; nếu có working_proposals
-   đạt ngưỡng đồng thuận thì nêu rõ đề xuất đó
-2. Xung đột chính — nêu rõ các bên và luận điểm đối lập
-3. Các phe/phái — ai liên minh với ai trong cuộc họp này
-4. Điểm đồng thuận (nếu có) — dựa trên working_proposals (aggregate_score, approvals)
-   và shared_facts được chấp nhận rộng rãi; hoặc ghi rõ "Chưa đạt đồng thuận"
-5. Rủi ro còn tồn đọng — từ tranh luận thực tế; nêu facts bị bác bỏ/tranh cãi
-   và proposals có approvals thấp hoặc concerns chưa giải quyết
-6. Động cơ & ý định từng persona — phân tích theo suy nghĩ nội bộ (nếu có);
-   nêu ai bảo vệ lợi ích gì, ai sẵn sàng compromise ở đâu, và có khoảng cách nào
-   giữa suy nghĩ ẩn vs lời nói công khai
-7. Đề xuất bước tiếp theo — hành động cụ thể cho ban lãnh đạo; nếu có proposal
-   active điểm cao nhất thì xem xét đưa vào khuyến nghị
-"""
 
 _TERMINATION_LABELS: dict[TerminationReason, str] = {
     TerminationReason.MAX_ROUNDS: "Đạt giới hạn số vòng/lượt phát biểu",
@@ -284,7 +248,7 @@ def generate_insight_report(
     llm = llm or MockLLMProvider()
     body = _format_record_for_insight(record)
     report = llm.generate(
-        INSIGHT_SYSTEM_PROMPT,
+        get_domain(record.config.domain_id).prompts.insight_system,
         f"Biên bản cuộc họp:\n\n{body}",
     )
     return report.strip()

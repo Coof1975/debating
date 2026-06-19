@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sim_chat.config import MeetingConfig
 from sim_chat.models import AstrologyProfile, DialogueTurn, RelationshipEdge, RelationshipMatrix
 from sim_chat.reasoning import build_reasoning_user_message, parse_monologue
 from sim_chat.relationship import format_relationships_for_reasoning, infer_session_mood
@@ -76,6 +77,7 @@ def test_build_reasoning_user_message_includes_relationship_block() -> None:
     matrix = _sample_matrix()
     message = build_reasoning_user_message(
         "[Cuộc họp: Keos]",
+        config=MeetingConfig(),
         speaker_id="CEO",
         relationship_matrix=matrix,
         last_speaker="SALE",

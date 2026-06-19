@@ -6,31 +6,13 @@ import json
 import re
 from collections import Counter
 
+from .domain import get_domain
 from .llm import LLMProvider
 from .models import DialogueTurn, MeetingState, RelationshipMatrix, SpeakerSelection, SpeakerSelectionMethod
 from .transcript import format_transcript_for_context
-from .relationship import ROLE_ALIASES
 
-ORCHESTRATOR_SYSTEM_PROMPT = """\
-Bạn là Điều phối viên cuộc họp (Meeting Orchestrator).
-Nhiệm vụ: chọn MỘT người phát biểu tiếp theo để cuộc họp có tranh luận sôi nổi, không monotonous.
-
-Quy tắc (theo thứ tự ưu tiên):
-1. Người bị chỉ định trực tiếp trong lượt trước (nếu có).
-2. QUAN TRỌNG NHẤT — chọn người có xung đột/lợi ích trái ngược với last_speaker về luận điểm vừa nêu.
-   - Dùng ma trận quan hệ và bảng xếp hạng xung đột được cung cấp.
-   - Ưu tiên phe đối lập, affinity âm, conflict_weight cao.
-   - Tránh chọn đồng minh cùng phe trừ khi họ bị gọi tên.
-3. Chọn người có chuyên môn liên quan đến chủ đề vừa được nhắc (ngân sách→CFO, sản xuất→PRODUCT, …).
-4. Cân bằng thời lượng chỉ là yếu tố phụ — không xoay vòng máy móc chỉ vì ai nói ít hơn.
-5. KHÔNG chọn last_speaker trừ khi bị yêu cầu trả lời trực tiếp.
-6. CEO không nói liên tiếp trừ khi cần chốt quyết định.
-
-Trả lời CHỈ bằng JSON hợp lệ:
-{"next_speaker": "<ROLE_ID>", "reason": "<lý do ngắn tiếng Việt — nêu xung đột/lợi ích>"}
-
-ROLE_ID phải là một trong danh sách participant_ids được cung cấp.
-"""
+# Re-export enterprise defaults for backward compatibility in tests/imports.
+from .domains.enterprise import DISPLAY_ALIASES, ORCHESTRATOR_SYSTEM_PROMPT, ROLE_ALIASES, TOPIC_ROLE_KEYWORDS
 
 # Tunable weights for conflict-first speaker selection.
 CONFLICT_WEIGHT = 2.5
@@ -41,58 +23,6 @@ SPEAK_BALANCE_PENALTY = 0.10
 CONFLICT_SHORTCUT_MIN_SCORE = 1.20
 CONFLICT_SHORTCUT_MIN_GAP = 0.35
 LLM_OVERRIDE_MIN_GAP = 0.40
-
-TOPIC_ROLE_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "CFO": (
-        "ngân sách",
-        "dòng tiền",
-        "biên lợi nhuận",
-        "margin",
-        "chi phí",
-        "công nợ",
-        "tài chính",
-        "lợi nhuận",
-        "giải ngân",
-    ),
-    "MARKETING": (
-        "thương hiệu",
-        "marketing",
-        "quảng cáo",
-        "brand",
-        "campaign",
-        "ads",
-        "tiktok",
-        "kol",
-    ),
-    "SALE": (
-        "chiết khấu",
-        "đại lý",
-        "npp",
-        "doanh số",
-        "kênh",
-        "bán hàng",
-        "sales",
-        "phân phối",
-        "gt",
-        "mt",
-    ),
-    "PRODUCT": (
-        "sản xuất",
-        "công suất",
-        "nhà máy",
-        "bao bì",
-        "tồn kho",
-        "keos",
-        "dây chuyền",
-        "cảng",
-    ),
-    "CEO": (
-        "chiến lược",
-        "quyết định",
-        "thị phần",
-        "tầm nhìn",
-    ),
-}
 
 REQUEST_MARKERS = (
     "trả lời",
@@ -114,18 +44,6 @@ REQUEST_MARKERS = (
     "bà ơi",
 )
 
-DISPLAY_ALIASES: dict[str, str] = {
-    "tổng giám đốc": "CEO",
-    "giám đốc tài chính": "CFO",
-    "trưởng phòng marketing": "MARKETING",
-    "giám đốc marketing": "MARKETING",
-    "giám đốc kinh doanh": "SALE",
-    "giám đốc sales": "SALE",
-    "giám đốc sản xuất": "PRODUCT",
-    "nhà máy": "PRODUCT",
-}
-
-
 def _speak_counts(messages: list[DialogueTurn], participant_ids: list[str]) -> Counter[str]:
     counts: Counter[str] = Counter({pid: 0 for pid in participant_ids})
     for turn in messages:
@@ -137,9 +55,9 @@ def _faction_for(matrix: RelationshipMatrix, role_id: str) -> set[str]:
     return {name for name, members in matrix.factions.items() if role_id in members}
 
 
-def _topic_bonus(role_id: str, last_content: str) -> float:
+def _topic_bonus(role_id: str, last_content: str, *, domain_id: str) -> float:
     lowered = last_content.lower()
-    keywords = TOPIC_ROLE_KEYWORDS.get(role_id, ())
+    keywords = get_domain(domain_id).topic_role_keywords.get(role_id, ())
     hits = sum(1 for keyword in keywords if keyword in lowered)
     if hits == 0:
         return 0.0
@@ -188,7 +106,7 @@ def score_conflict_candidate(
     if last_factions and cand_factions and not (last_factions & cand_factions):
         score += FACTION_OPPOSITION_BONUS
 
-    score += _topic_bonus(candidate, last_content)
+    score += _topic_bonus(candidate, last_content, domain_id=state["config"].domain_id)
     score += _relationship_notes_bonus(matrix, last_speaker, candidate, last_content)
 
     participant_ids = state["participant_ids"]
@@ -245,6 +163,7 @@ def _format_conflict_ranking(state: MeetingState) -> str:
 
 def _build_alias_map(state: MeetingState) -> list[tuple[str, str]]:
     """Return (alias, role_id) pairs sorted longest-first for matching."""
+    domain = get_domain(state["config"].domain_id)
     pairs: list[tuple[str, str]] = []
     for role_id in state["participant_ids"]:
         pairs.append((role_id.lower(), role_id))
@@ -254,10 +173,10 @@ def _build_alias_map(state: MeetingState) -> list[tuple[str, str]]:
             for part in name.split():
                 if len(part) > 2:
                     pairs.append((part.lower(), role_id))
-        for alias, mapped in ROLE_ALIASES.items():
+        for alias, mapped in domain.role_aliases.items():
             if mapped == role_id:
                 pairs.append((alias, role_id))
-        for alias, mapped in DISPLAY_ALIASES.items():
+        for alias, mapped in domain.display_aliases.items():
             if mapped == role_id:
                 pairs.append((alias, role_id))
 
@@ -509,7 +428,7 @@ Biên bản gần nhất:
 
 Chọn next_speaker có xung đột/lợi ích mạnh nhất với last_speaker về luận điểm vừa nêu.
 """
-    raw = llm.generate(ORCHESTRATOR_SYSTEM_PROMPT, user_message)
+    raw = llm.generate(get_domain(state["config"].domain_id).prompts.orchestrator_system, user_message)
     chosen, llm_reason = _parse_orchestrator_response(raw, participant_ids)
     if chosen and chosen != last_speaker:
         return _apply_conflict_override(state, chosen, llm_reason)

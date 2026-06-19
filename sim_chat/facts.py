@@ -8,28 +8,12 @@ import uuid
 from typing import Literal
 
 from .config import MeetingConfig
+from .domain import get_domain
 from .embeddings import is_duplicate_fact
 from .llm import LLMProvider
 from .models import FactAcceptance, FactDraft, ReasoningResult, SharedFact
 
 FactCategory = Literal["financial", "operational", "market", "other"]
-
-FACT_EXTRACTOR_SYSTEM_PROMPT = """\
-Bạn là trích xuất sự kiện/số liệu từ phát biểu họp nội bộ.
-
-Nhiệm vụ: tách các tuyên bố factual cụ thể (số liệu, timeline, ràng buộc vận hành)
-từ lời nói công khai — KHÔNG trích quan điểm chủ quan hay cảm xúc.
-
-Trả lời CHỈ bằng JSON hợp lệ:
-{
-  "facts": [
-    {"fact": "...", "category": "financial|operational|market|other", "confidence": 0.0-1.0}
-  ]
-}
-
-Nếu không có số liệu/sự kiện cụ thể → {"facts": []}
-Không thêm markdown hay giải thích ngoài JSON.
-"""
 
 _PERCENT_PATTERN = re.compile(r"(\+?\d+[\.,]?\d*)\s*%")
 _NUMBER_CLAIM_PATTERN = re.compile(
@@ -134,7 +118,7 @@ def extract_facts_from_speech(
         f"Phát biểu:\n{speech.strip()}"
     )
     raw = llm.generate(
-        FACT_EXTRACTOR_SYSTEM_PROMPT,
+        get_domain(config.domain_id).prompts.fact_extractor_system,
         user_message,
         max_tokens=256,
     )

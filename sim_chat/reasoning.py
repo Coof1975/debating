@@ -21,61 +21,14 @@ from .models import (
     DialogueTurn,
     RelationshipMatrix,
 )
+from .domain import get_domain
 from .facts import format_shared_facts_for_reasoning
 from .proposals import format_proposals_for_context
 from .relationship import format_relationships_for_reasoning
 
-REASONING_SYSTEM_SUFFIX = """
 
-## CHẾ ĐỘ SUY NGHĨ NỘI BỘ (INTERNAL REASONING)
-Bạn đang ở bước suy nghĩ ẩn — output KHÔNG hiển thị trực tiếp cho người dùng.
-
-Trước khi phát biểu công khai, thực hiện các bước và trả về JSON hợp lệ (không markdown):
-0. **relationship_lens** (string): Góc nhìn quan hệ cá nhân — cả hai chiều:
-   - Tiêu cực: ghét, nghi ngờ động cơ, muốn bắt bẻ, khiêu khích, bực vì bị chọc...
-   - Tích cực: tin tưởng, tôn trọng, thích, đồng cảm, muốn bảo vệ phe/đồng minh, nương theo ý người mình quý...
-   Ghi rõ với ai (đặc biệt người vừa nói) và tâm trạng hôm nay. Dựa ma trận quan hệ + phe + biên bản gần nhất.
-1. **absorb** (string): Phân tích ý vừa nghe — điểm hợp lý, điểm xung đột, có xâm phạm lợi ích bộ phận? Lọc qua relationship_lens (VD: nếu ghét B thì vẫn tìm điểm hợp lý nhưng không nuốt trọn).
-2. **compromise_space** (string): Nếu phủ quyết hoàn toàn → cuộc họp bế tắc. Có phương án dung hòa giữ đủ lợi ích bộ phận?
-3. **stance_shift** (float): -1.0 đến 1.0 — mức nhún nhường so với lập trường cứng (0=giữ nguyên, dương=linh hoạt hơn).
-
-Mục tiêu tối thượng: cuộc họp phải ra kết quả cho Sếp (CEO). Bế tắc vô nghĩa sẽ bị đánh giá thấp.
-Tuyệt đối không phủ nhận sạch — hãy tìm vùng giao thoa ngay cả khi bảo vệ lợi ích bộ phận.
-Quan hệ cá nhân được phép ảnh hưởng giọng điệu và mức cứng nhưng không được phá vỡ vai trò chuyên môn.
-Áp dụng HỒ SƠ ĐÀM PHÁN trong system prompt (chỉ số thỏa hiệp, % lợi ích tối thiểu).
-"""
-
-REASONING_USER_SUFFIX = """
-[INTERNAL REASONING]
-Trả lời CHỈ bằng JSON hợp lệ với các trường:
-- relationship_lens, absorb, compromise_space, stance_shift
-- proposal_scores: [{"id": "<proposal_id>", "score": 0.0-1.0, "concerns": "..."}] — chấm từng đề xuất active
-- new_proposal: null HOẶC {"title": "...", "description": "...", "parent_id": "<id>|null"} nếu có phương án dung hòa mới
-- fact_acceptances: [{"fact_id": "<id>", "accepted": true|false}] — đánh giá số liệu đồng nghiệp (nếu có)
-
-Không thêm markdown hay giải thích ngoài JSON.
-"""
-
-SPEECH_INSTRUCTIONS = """
-Dựa trên suy nghĩ nội bộ sau, viết 2–6 câu phát biểu công khai trong cuộc họp:
-
-[RELATIONSHIP LENS]
-{relationship_lens}
-
-[ABSORB]
-{absorb}
-
-[COMPROMISE SPACE]
-{compromise_space}
-
-Quy tắc phát biểu:
-- Giọng điệu phản ánh quan hệ cá nhân (thân/tôn trọng/bảo vệ phe hoặc khinh/nghi ngờ) nhưng vẫn lịch sự trong họp nội bộ
-- "Yes, and..." — thừa nhận phần hợp lý trước khi bổ sung hoặc phản biện
-- Không lặp lại monologue, không meta ("tôi đã suy nghĩ...", "theo phân tích nội bộ...")
-- Giữ giọng điệu và tính cách nhân vật
-- Bám sát bối cảnh cuộc họp ở trên
-"""
-
+def _domain(config: MeetingConfig):
+    return get_domain(config.domain_id)
 
 def strip_json_fence(raw: str) -> str:
     cleaned = raw.strip()
@@ -178,6 +131,7 @@ def parse_reasoning_result(raw: str) -> ReasoningResult | None:
 def build_reasoning_user_message(
     meeting_context: str,
     *,
+    config: MeetingConfig,
     negotiation: NegotiationProfile | None = None,
     effective_threshold: float | None = None,
     working_proposals: list[WorkingProposal] | None = None,
@@ -189,7 +143,8 @@ def build_reasoning_user_message(
     recent_messages: list[DialogueTurn] | None = None,
     enable_relationship_reasoning: bool = True,
 ) -> str:
-    suffix = REASONING_USER_SUFFIX
+    domain = _domain(config)
+    suffix = domain.prompts.reasoning_user_suffix
     blocks: list[str] = [meeting_context.rstrip()]
 
     if (
@@ -220,21 +175,33 @@ def build_reasoning_user_message(
             f"""[HỒ SƠ ĐÀM PHÁN — lượt này]
 - Chỉ số thỏa hiệp hiệu dụng: {threshold:.2f}/1.0
 - Tối thiểu giữ lợi ích bộ phận: {retention_pct}%
-- Áp lực Sếp: nếu bế tắc, Sếp (CEO) đánh giá kém năng lực điều phối"""
+{domain.prompts.negotiation_pressure_block}"""
         )
 
     blocks.append(suffix.strip())
     return "\n\n".join(blocks)
 
 
-def build_speech_user_message(meeting_context: str, monologue: InternalMonologue) -> str:
+def build_speech_user_message(
+    meeting_context: str,
+    monologue: InternalMonologue,
+    *,
+    config: MeetingConfig,
+    stagnation_score: int = 0,
+) -> str:
     relationship_lens = monologue.relationship_lens.strip() or "(không ghi nhận bias quan hệ đặc biệt)"
-    speech_block = SPEECH_INSTRUCTIONS.format(
+    speech_block = _domain(config).prompts.speech_instructions.format(
         relationship_lens=relationship_lens,
         absorb=monologue.absorb,
         compromise_space=monologue.compromise_space,
     )
-    return f"{meeting_context.rstrip()}\n\n{speech_block}"
+    parts = [meeting_context.rstrip(), speech_block.strip()]
+    if stagnation_score >= 1:
+        parts.append(
+            "[NHẮC LẠI] Phiên đang lặp ý — lượt công khai phải mang thông tin MỚI "
+            "(số khác, điều kiện chấp nhận, counter-proposal). Không paraphrase lại absorb/compromise."
+        )
+    return "\n\n".join(parts)
 
 
 def effective_compromise_threshold(
@@ -279,9 +246,11 @@ def generate_persona_speech(
             enable_dynamic=config.enable_dynamic_compromise,
         )
 
-    reasoning_system = f"{system_prompt.rstrip()}{REASONING_SYSTEM_SUFFIX}"
+    domain = _domain(config)
+    reasoning_system = f"{system_prompt.rstrip()}{domain.prompts.reasoning_system_suffix}"
     reasoning_user = build_reasoning_user_message(
         meeting_context,
+        config=config,
         negotiation=negotiation,
         effective_threshold=effective_threshold,
         working_proposals=working_proposals if config.enable_working_proposals else None,
@@ -303,7 +272,12 @@ def generate_persona_speech(
         content = llm.generate(system_prompt, meeting_context).strip()
         return content, None
 
-    speech_user = build_speech_user_message(meeting_context, reasoning.monologue)
+    speech_user = build_speech_user_message(
+        meeting_context,
+        reasoning.monologue,
+        config=config,
+        stagnation_score=stagnation_score,
+    )
     content = llm.generate(
         system_prompt,
         speech_user,

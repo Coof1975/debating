@@ -12,9 +12,11 @@ LLMProviderName = Literal["openai", "gemini"]
 class MeetingConfig(BaseModel):
     """Tunable parameters for graph execution and stopping criteria."""
 
+    # Domain pack: enterprise | tutoring | securities | custom (pass ParticipantBundle)
+    domain_id: str = "enterprise"
     # Defaults should be generic; real runs should set these from Meeting rows.
-    meeting_topic: str = "Chủ đề cuộc họp (chưa đặt)"
-    opening_message: str = "Cuộc họp nội bộ. Hãy bám sát chủ đề và nêu quan điểm thẳng thắn."
+    meeting_topic: str = "Chủ đề phiên (chưa đặt)"
+    opening_message: str = "Phiên thảo luận. Hãy bám sát chủ đề và nêu quan điểm thẳng thắn."
     max_rounds: int = 3
     max_turns: int | None = None
     stagnation_limit: int = 4
@@ -37,14 +39,12 @@ class MeetingConfig(BaseModel):
     transcript_window_orchestrator: int = 10
     transcript_window_persona: int = 12
     transcript_window_secretary: int = 20
-    opening_speaker: str = "CEO"
+    opening_speaker: str = ""
     participant_ids: list[str] | None = None
-    key_stakeholders: list[str] = Field(
-        default_factory=lambda: ["CEO", "CFO"],
-    )
+    key_stakeholders: list[str] = Field(default_factory=list)
     llm_provider: LLMProviderName = "openai"
     llm_model: str = "gpt-4o-mini"
-    llm_temperature: float = 0.9
+    llm_temperature: float = 0.75
     max_output_tokens: int = 1024
     use_mock: bool = False
     enable_internal_monologue: bool = True

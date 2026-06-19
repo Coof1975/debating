@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { LlmProviderOption, PersonaListItem } from '../../types'
+import type { NewMeetingLocationState } from '../../types/navigation'
 
 type WizardData = {
   topic: string
@@ -37,6 +38,11 @@ function toScheduledIso(date: string, time: string): string | undefined {
 
 export function MeetingWizard() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const followUpState = location.state as NewMeetingLocationState | null
+  const prefill = followUpState?.prefill
+  const followUpFrom = followUpState?.followUpFrom
+
   const [step, setStep] = useState(1)
   const [personas, setPersonas] = useState<PersonaListItem[]>([])
   const [providers, setProviders] = useState<LlmProviderOption[]>([])
@@ -44,18 +50,18 @@ export function MeetingWizard() {
   const [error, setError] = useState<string | null>(null)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const [data, setData] = useState<WizardData>({
-    topic: '',
+  const [data, setData] = useState<WizardData>(() => ({
+    topic: prefill?.topic ?? '',
     scheduledDate: defaultDate(),
     scheduledTime: defaultTime(),
-    notes: '',
-    openingMessage: '',
-    selected: [],
-    hostId: '',
+    notes: prefill?.notes ?? '',
+    openingMessage: prefill?.openingMessage ?? '',
+    selected: prefill?.participantIds ?? [],
+    hostId: prefill?.hostId ?? '',
     maxTurns: 25,
     providerId: 'openai',
     modelId: 'gpt-4o-mini',
-  })
+  }))
 
   const activeProvider = useMemo(
     () => providers.find((p) => p.id === data.providerId),
@@ -66,12 +72,23 @@ export function MeetingWizard() {
     api.listPersonas().then((rows) => {
       const roles = rows.map((p) => p.role)
       const defaultHost = roles.includes('CEO') ? 'CEO' : (roles[0] ?? '')
+      const prefilledParticipants = prefill?.participantIds?.filter((role) => roles.includes(role))
       setPersonas(rows)
-      setData((prev) => ({
-        ...prev,
-        selected: roles,
-        hostId: prev.hostId || defaultHost,
-      }))
+      setData((prev) => {
+        const selected =
+          prefilledParticipants && prefilledParticipants.length > 0
+            ? prefilledParticipants
+            : prev.selected.length > 0
+              ? prev.selected.filter((role) => roles.includes(role))
+              : roles
+        const hostId =
+          prev.hostId && selected.includes(prev.hostId)
+            ? prev.hostId
+            : selected.includes(defaultHost)
+              ? defaultHost
+              : (selected[0] ?? '')
+        return { ...prev, selected, hostId }
+      })
     })
     api.listLlmOptions().then((res) => {
       setProviders(res.providers)
@@ -169,6 +186,14 @@ export function MeetingWizard() {
 
   return (
     <div>
+      {followUpFrom && (
+        <div className="mb-6 rounded-xl border border-indigo-500/30 bg-indigo-950/30 px-4 py-3 text-sm text-indigo-100">
+          Meeting tiếp theo từ insight report của cuộc họp{' '}
+          <span className="font-medium text-white">"{followUpFrom.priorTopic}"</span>.
+          Chủ đề và ghi chú đã được điền sẵn — bạn có thể chỉnh trước khi tạo.
+        </div>
+      )}
+
       <div className="mb-6 flex flex-col gap-2 sm:mb-8 sm:flex-row sm:items-center sm:gap-2">
         {steps.map((label, index) => {
           const n = index + 1

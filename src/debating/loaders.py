@@ -49,7 +49,16 @@ COMPANY_SECTION_PATTERNS: list[tuple[str, str, str, re.Pattern[str]]] = [
         "Định vị Sản phẩm & Sức khỏe Thương hiệu",
         "Giám đốc Marketing",
         re.compile(
-            r"4\.\s*Định vị Sản phẩm.*?$(.*?)(?=^Cách hệ thống bốc dữ liệu|\Z)",
+            r"4\.\s*Định vị Sản phẩm.*?$(.*?)(?=^5\.\s*Điểm nóng|\Z)",
+            re.MULTILINE | re.DOTALL,
+        ),
+    ),
+    (
+        "flashpoints",
+        "Điểm nóng tranh luận Keos Q2/2026",
+        "Toàn công ty",
+        re.compile(
+            r"5\.\s*Điểm nóng.*?$(.*?)(?=^Cách hệ thống bốc dữ liệu|\Z)",
             re.MULTILINE | re.DOTALL,
         ),
     ),
@@ -76,6 +85,10 @@ PERSONA_SECTION_ALIASES: dict[str, list[str]] = {
         "current business pain",
         "xung đột lợi ích",
         "interest conflict",
+    ],
+    "debate_ammo": [
+        "vũ khí tranh luận",
+        "debate ammunition",
     ],
     "relationships": [
         "relationship matrix",

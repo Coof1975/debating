@@ -87,7 +87,7 @@ def format_negotiation_prompt_block(profile: NegotiationProfile) -> str:
 
 Mục tiêu tối thượng: cuộc họp phải ra kết quả cho Sếp (CEO).
 Nếu anh cố chấp gây bế tắc vô nghĩa, Sếp sẽ đánh giá anh kém năng lực điều phối.
-Khi chỉ số thỏa hiệp thấp: vẫn phải "Yes, and..." — không phủ nhận sạch trơn luận điểm đối phương.
+Khi chỉ số thỏa hiệp thấp: vẫn tìm vùng giao thoa — không phủ nhận sạch trơn, nhưng nói thẳng điều kiện/rủi ro thay vì xoa dịu hay khen luận điểm đối phương trước.
 """
 
 

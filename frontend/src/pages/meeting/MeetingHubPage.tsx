@@ -11,6 +11,10 @@ import {
   buildExtensionStreamSeed,
   extensionSuggestionLabel,
 } from '../../lib/meetingExtension'
+import {
+  DEFAULT_LLM_PROVIDERS,
+  DEFAULT_OPENAI_MODEL,
+} from '../../lib/llmOptions'
 import { parseSpeakerSelections } from '../../lib/speakerSelections'
 import type { ExtensionRejectedDetail, LlmProviderOption, Meeting, SharedFact, WorkingProposal } from '../../types'
 import { MeetingHubProvider, type MeetingHubContextValue } from './MeetingHubContext'
@@ -31,7 +35,7 @@ export function MeetingHubPage() {
   const [showInternalReasoning, setShowInternalReasoning] = useState(true)
   const [showOrchestratorDecisions, setShowOrchestratorDecisions] = useState(false)
   const [providerId, setProviderId] = useState('openai')
-  const [modelId, setModelId] = useState('gpt-4o-mini')
+  const [modelId, setModelId] = useState(DEFAULT_OPENAI_MODEL)
   const [extending, setExtending] = useState(false)
   const [extensionRejection, setExtensionRejection] = useState<ExtensionRejectedDetail | null>(null)
   const [pendingExtensionContent, setPendingExtensionContent] = useState('')
@@ -49,7 +53,7 @@ export function MeetingHubPage() {
     const cfg = data.config ?? {}
     const useMock = Boolean(cfg.use_mock)
     setProviderId(useMock ? 'mock' : String(cfg.llm_provider ?? 'openai'))
-    setModelId(String(cfg.llm_model ?? 'gpt-4o-mini'))
+    setModelId(String(cfg.llm_model ?? DEFAULT_OPENAI_MODEL))
   }, [meetingId])
 
   useEffect(() => {
@@ -58,7 +62,9 @@ export function MeetingHubPage() {
     loadMeeting()
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false))
-    api.listLlmOptions().then((data) => setProviders(data.providers))
+    api.listLlmOptions()
+      .then((data) => setProviders(data.providers))
+      .catch(() => setProviders(DEFAULT_LLM_PROVIDERS))
   }, [meetingId, loadMeeting])
 
   useEffect(() => {

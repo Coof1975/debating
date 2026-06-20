@@ -90,7 +90,7 @@ def get_meeting_or_404(db: Session, meeting_id: str) -> Meeting:
 def _default_model_for_provider(provider: str) -> str:
     defaults = {
         "openai": "gpt-4o-mini",
-        "gemini": "gemini-2.0-flash",
+        "gemini": "gemini-2.5-flash",
         "mock": "mock",
     }
     return defaults.get(provider, "gpt-4o-mini")

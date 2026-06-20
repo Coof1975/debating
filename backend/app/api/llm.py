@@ -8,7 +8,7 @@ router = APIRouter(prefix="/llm", tags=["llm"])
 
 _DEFAULT_MODELS = {
     "openai": "gpt-4o-mini",
-    "gemini": "gemini-2.0-flash",
+    "gemini": "gemini-2.5-flash",
     "mock": "mock",
 }
 
@@ -23,7 +23,6 @@ def list_llm_options() -> LlmOptionsResponse:
                 default_model=_DEFAULT_MODELS["openai"],
                 models=[
                     LlmModelOption(id="gpt-4o-mini", label="GPT-4o Mini"),
-                    LlmModelOption(id="gpt-4o", label="GPT-4o"),
                 ],
             ),
             LlmProviderOption(
@@ -31,8 +30,7 @@ def list_llm_options() -> LlmOptionsResponse:
                 label="Google Gemini",
                 default_model=_DEFAULT_MODELS["gemini"],
                 models=[
-                    LlmModelOption(id="gemini-2.0-flash", label="Gemini 2.0 Flash"),
-                    LlmModelOption(id="gemini-1.5-pro", label="Gemini 1.5 Pro"),
+                    LlmModelOption(id="gemini-2.5-flash", label="Gemini 2.5 Flash"),
                 ],
             ),
             LlmProviderOption(

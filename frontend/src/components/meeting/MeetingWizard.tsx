@@ -3,6 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { LlmProviderOption, PersonaListItem } from '../../types'
 import type { NewMeetingLocationState } from '../../types/navigation'
+import {
+  DEFAULT_LLM_PROVIDERS,
+  DEFAULT_OPENAI_MODEL,
+  defaultModelForProvider,
+  modelOptionsWithCurrent,
+} from '../../lib/llmOptions'
 
 type WizardData = {
   topic: string
@@ -60,7 +66,7 @@ export function MeetingWizard() {
     hostId: prefill?.hostId ?? '',
     maxTurns: 25,
     providerId: 'openai',
-    modelId: 'gpt-4o-mini',
+    modelId: DEFAULT_OPENAI_MODEL,
   }))
 
   const activeProvider = useMemo(
@@ -90,24 +96,43 @@ export function MeetingWizard() {
         return { ...prev, selected, hostId }
       })
     })
-    api.listLlmOptions().then((res) => {
-      setProviders(res.providers)
-      const defaultProvider = res.providers[0]
-      if (defaultProvider) {
-        setData((prev) => ({
-          ...prev,
-          providerId: defaultProvider.id,
-          modelId: defaultProvider.default_model,
-        }))
-      }
-    })
+    api.listLlmOptions()
+      .then((res) => {
+        const loaded = res.providers.length > 0 ? res.providers : DEFAULT_LLM_PROVIDERS
+        setProviders(loaded)
+        setData((prev) => {
+          const provider = loaded.find((p) => p.id === prev.providerId) ?? loaded[0]
+          if (!provider) return prev
+          const modelId = provider.models.some((m) => m.id === prev.modelId)
+            ? prev.modelId
+            : provider.default_model
+          return {
+            ...prev,
+            providerId: loaded.some((p) => p.id === prev.providerId) ? prev.providerId : provider.id,
+            modelId,
+          }
+        })
+      })
+      .catch(() => {
+        setProviders(DEFAULT_LLM_PROVIDERS)
+        setData((prev) => {
+          const provider =
+            DEFAULT_LLM_PROVIDERS.find((p) => p.id === prev.providerId) ?? DEFAULT_LLM_PROVIDERS[0]
+          const modelId = provider.models.some((m) => m.id === prev.modelId)
+            ? prev.modelId
+            : provider.default_model
+          return { ...prev, providerId: provider.id, modelId }
+        })
+      })
   }, [])
 
-  useEffect(() => {
-    if (activeProvider) {
-      setData((prev) => ({ ...prev, modelId: activeProvider.default_model }))
-    }
-  }, [activeProvider])
+  function handleProviderChange(providerId: string) {
+    setData((prev) => ({
+      ...prev,
+      providerId,
+      modelId: defaultModelForProvider(providerId),
+    }))
+  }
 
   function togglePersona(role: string) {
     setData((prev) => {
@@ -375,7 +400,7 @@ export function MeetingWizard() {
                 <label className="block text-sm font-medium text-slate-300">LLM provider</label>
                 <select
                   value={data.providerId}
-                  onChange={(e) => setData((prev) => ({ ...prev, providerId: e.target.value }))}
+                  onChange={(e) => handleProviderChange(e.target.value)}
                   className={inputClass}
                 >
                   {providers.map((p) => (
@@ -390,7 +415,7 @@ export function MeetingWizard() {
                   onChange={(e) => setData((prev) => ({ ...prev, modelId: e.target.value }))}
                   className={inputClass}
                 >
-                  {(activeProvider?.models ?? []).map((m) => (
+                  {(modelOptionsWithCurrent(activeProvider?.models ?? [], data.modelId)).map((m) => (
                     <option key={m.id} value={m.id}>{m.label}</option>
                   ))}
                 </select>

@@ -8,6 +8,7 @@ import {
   buildFollowUpMeetingPrefill,
   extractNextStepsSection,
 } from '../../lib/insightFollowUp'
+import { defaultModelForProvider, modelOptionsWithCurrent } from '../../lib/llmOptions'
 import type { SharedFact } from '../../types'
 import type { NewMeetingLocationState } from '../../types/navigation'
 import { canAccessSimulationTab, useMeetingHub } from './MeetingHubContext'
@@ -127,7 +128,11 @@ export function MeetingSimulationTab() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <select
               value={providerId}
-              onChange={(e) => setProviderId(e.target.value)}
+              onChange={(e) => {
+                const nextProviderId = e.target.value
+                setProviderId(nextProviderId)
+                setModelId(defaultModelForProvider(nextProviderId))
+              }}
               className="input-field"
             >
               {providers.map((p) => (
@@ -139,7 +144,7 @@ export function MeetingSimulationTab() {
               onChange={(e) => setModelId(e.target.value)}
               className="input-field"
             >
-              {(activeProvider?.models ?? []).map((m) => (
+              {(modelOptionsWithCurrent(activeProvider?.models ?? [], modelId)).map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
             </select>

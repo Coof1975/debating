@@ -113,10 +113,12 @@ def test_generate_persona_speech_enabled_returns_monologue() -> None:
 
 def test_generate_persona_speech_fallback_on_bad_json() -> None:
     class BadReasoningLLM(MockLLMProvider):
-        def generate(self, system_prompt, user_message, *, max_tokens=None):
+        def generate(self, system_prompt, user_message, *, max_tokens=None, json_mode=False):
             if "[INTERNAL REASONING]" in user_message:
                 return "invalid json response"
-            return super().generate(system_prompt, user_message, max_tokens=max_tokens)
+            return super().generate(
+                system_prompt, user_message, max_tokens=max_tokens, json_mode=json_mode
+            )
 
     llm = BadReasoningLLM(persona_names={"CFO": "Trần Minh Trí"})
     config = MeetingConfig(enable_internal_monologue=True, use_mock=True)

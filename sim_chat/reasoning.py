@@ -6,6 +6,7 @@ import json
 import re
 
 from .config import MeetingConfig
+from .text_quality import text_looks_incomplete
 from .llm import LLMProvider
 from .models import (
     HiddenTurn,
@@ -218,6 +219,56 @@ def effective_compromise_threshold(
     return min(1.0, boosted)
 
 
+_SPEECH_LEAK_MARKERS = (
+    "[proposal_scores]",
+    '"absorb"',
+    '"compromise_space"',
+    "proposal_id",
+    "[internal reasoning]",
+    "```json",
+)
+
+
+def _looks_like_leaked_reasoning(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(("{", "[", "```")):
+        return True
+    lowered = stripped.lower()
+    return any(marker in lowered for marker in _SPEECH_LEAK_MARKERS)
+
+
+def _looks_like_bad_speech(text: str) -> bool:
+    if text_looks_incomplete(text):
+        return True
+    return _looks_like_leaked_reasoning(text)
+
+
+def _generate_public_speech(
+    llm: LLMProvider,
+    *,
+    system_prompt: str,
+    user_message: str,
+    max_tokens: int,
+) -> str:
+    attempts = [
+        user_message,
+        (
+            f"{user_message.rstrip()}\n\n"
+            "[QUAN TRỌNG] Viết 2–6 câu tiếng Việt công khai trong cuộc họp. "
+            "Không JSON, không markdown, không proposal_scores. Kết thúc bằng dấu chấm."
+        ),
+    ]
+    last = ""
+    for index, prompt in enumerate(attempts):
+        tokens = max(max_tokens, 1024) if index else max_tokens
+        last = llm.generate(system_prompt, prompt, max_tokens=tokens).strip()
+        if not _looks_like_bad_speech(last):
+            return last
+    return last
+
+
 def generate_persona_speech(
     llm: LLMProvider,
     *,
@@ -236,7 +287,12 @@ def generate_persona_speech(
 ) -> tuple[str, ReasoningResult | None]:
     """Generate public speech, optionally via hidden internal monologue."""
     if not config.enable_internal_monologue:
-        return llm.generate(system_prompt, meeting_context).strip(), None
+        return _generate_public_speech(
+            llm,
+            system_prompt=system_prompt,
+            user_message=meeting_context,
+            max_tokens=config.speech_max_tokens,
+        ), None
 
     effective_threshold = None
     if negotiation is not None:
@@ -266,10 +322,16 @@ def generate_persona_speech(
         reasoning_system,
         reasoning_user,
         max_tokens=config.reasoning_max_tokens,
+        json_mode=True,
     )
     reasoning = parse_reasoning_result(raw_reasoning)
     if reasoning is None:
-        content = llm.generate(system_prompt, meeting_context).strip()
+        content = _generate_public_speech(
+            llm,
+            system_prompt=system_prompt,
+            user_message=meeting_context,
+            max_tokens=config.speech_max_tokens,
+        )
         return content, None
 
     speech_user = build_speech_user_message(
@@ -278,12 +340,13 @@ def generate_persona_speech(
         config=config,
         stagnation_score=stagnation_score,
     )
-    content = llm.generate(
-        system_prompt,
-        speech_user,
+    content = _generate_public_speech(
+        llm,
+        system_prompt=system_prompt,
+        user_message=speech_user,
         max_tokens=config.speech_max_tokens,
     )
-    return content.strip(), reasoning
+    return content, reasoning
 
 
 def monologue_state_patch(

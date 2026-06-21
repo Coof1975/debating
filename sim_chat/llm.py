@@ -8,6 +8,7 @@ import re
 from typing import Protocol
 
 from .config import MeetingConfig
+from .text_quality import text_looks_incomplete
 
 
 class LLMProvider(Protocol):
@@ -17,6 +18,7 @@ class LLMProvider(Protocol):
         user_message: str,
         *,
         max_tokens: int | None = None,
+        json_mode: bool = False,
     ) -> str: ...
 
 
@@ -33,6 +35,7 @@ class MockLLMProvider:
         user_message: str,
         *,
         max_tokens: int | None = None,
+        json_mode: bool = False,
     ) -> str:
         self._turn += 1
         role_match = re.search(r"Bạn là \*\*([^*]+)\*\*", system_prompt)
@@ -273,26 +276,42 @@ class OpenAILLMProvider:
         user_message: str,
         *,
         max_tokens: int | None = None,
+        json_mode: bool = False,
     ) -> str:
         from openai import OpenAI
 
         client = OpenAI(api_key=self.api_key)
-        response = client.chat.completions.create(
-            model=self.config.llm_model,
-            messages=[
+        kwargs: dict = {
+            "model": self.config.llm_model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message},
             ],
-            temperature=self.config.llm_temperature,
-            max_tokens=max_tokens or self.config.max_output_tokens,
-        )
+            "temperature": self.config.llm_temperature,
+            "max_tokens": max_tokens or self.config.max_output_tokens,
+        }
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        response = client.chat.completions.create(**kwargs)
         return (response.choices[0].message.content or "").strip()
 
 
 def _is_gemini_thinking_model(model: str) -> bool:
     """Gemini 2.5+ allocates thinking tokens inside max_output_tokens."""
     normalized = model.lower()
+    if "flash-lite" in normalized or "flash_lite" in normalized:
+        return False
     return "2.5" in normalized or normalized.startswith("gemini-3")
+
+
+def _effective_gemini_output_tokens(requested: int, model: str) -> int:
+    """Raise floor for 2.5+ so visible output is not starved by thinking tokens."""
+    if not _is_gemini_thinking_model(model):
+        return requested
+    return max(requested, 4096)
+
+
+GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
 
 
 def _gemini_finish_reason(response: object) -> str | None:
@@ -303,18 +322,32 @@ def _gemini_finish_reason(response: object) -> str | None:
     return str(reason) if reason is not None else None
 
 
-def _gemini_output_truncated(response: object, text: str) -> bool:
+def _gemini_thoughts_token_count(response: object) -> int:
+    usage = getattr(response, "usage_metadata", None)
+    if usage is None:
+        return 0
+    try:
+        return int(getattr(usage, "thoughts_token_count", None) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _gemini_output_truncated(response: object, text: str, *, requested_tokens: int) -> bool:
+    if text_looks_incomplete(text):
+        return True
+
     reason = _gemini_finish_reason(response)
     if reason and "MAX" in reason.upper():
         return True
-    return bool(text) and not re.search(r"[.!?…\"'\)\]]\s*$", text)
+
+    thoughts = _gemini_thoughts_token_count(response)
+    if thoughts and thoughts >= max(1, requested_tokens - 64) and len(text) < 120:
+        return True
+
+    return False
 
 
 def _extract_gemini_text(response: object) -> str:
-    text = getattr(response, "text", None)
-    if text:
-        return str(text).strip()
-
     chunks: list[str] = []
     for candidate in getattr(response, "candidates", None) or []:
         content = getattr(candidate, "content", None)
@@ -327,7 +360,13 @@ def _extract_gemini_text(response: object) -> str:
             if getattr(part, "thought", False):
                 continue
             chunks.append(str(part_text))
-    return "".join(chunks).strip()
+
+    joined = "".join(chunks).strip()
+    if joined:
+        return joined
+
+    text = getattr(response, "text", None)
+    return str(text).strip() if text else ""
 
 
 class GeminiLLMProvider:
@@ -345,6 +384,7 @@ class GeminiLLMProvider:
         system_prompt: str,
         max_output_tokens: int,
         thinking_budget: int | None,
+        json_mode: bool,
     ) -> object:
         from google.genai import types
 
@@ -355,6 +395,8 @@ class GeminiLLMProvider:
         }
         if thinking_budget is not None:
             kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+        if json_mode:
+            kwargs["response_mime_type"] = "application/json"
         return types.GenerateContentConfig(**kwargs)
 
     def generate(
@@ -363,31 +405,63 @@ class GeminiLLMProvider:
         user_message: str,
         *,
         max_tokens: int | None = None,
+        json_mode: bool = False,
     ) -> str:
         from google import genai
 
         client = genai.Client(api_key=self.api_key)
-        max_out = max_tokens or self.config.max_output_tokens
-        thinking_budget = 0 if _is_gemini_thinking_model(self.config.llm_model) else None
+        requested = max_tokens or self.config.max_output_tokens
+        uses_thinking = _is_gemini_thinking_model(self.config.llm_model)
+        thinking_budget = 0 if uses_thinking else None
 
-        def _call(output_tokens: int, budget: int | None) -> object:
-            return client.models.generate_content(
-                model=self.config.llm_model,
-                contents=user_message,
-                config=self._build_generate_config(
-                    system_prompt=system_prompt,
-                    max_output_tokens=output_tokens,
-                    thinking_budget=budget,
-                ),
-            )
+        limits: list[int] = []
+        first = _effective_gemini_output_tokens(requested, self.config.llm_model)
+        limits.extend([first, 8192, 16384])
+        limits = sorted(set(limits))
 
-        response = _call(max_out, thinking_budget)
-        text = _extract_gemini_text(response)
-        if _gemini_output_truncated(response, text):
-            retry_tokens = max(max_out * 3, 2048)
-            if retry_tokens > max_out:
-                response = _call(retry_tokens, thinking_budget)
+        models = [self.config.llm_model]
+        if uses_thinking and self.config.llm_model != GEMINI_FALLBACK_MODEL:
+            models.append(GEMINI_FALLBACK_MODEL)
+
+        text = ""
+
+        def _call(model: str, output_tokens: int, budget: int | None, message: str) -> object | None:
+            budget_for_call = None if model == GEMINI_FALLBACK_MODEL else budget
+            try:
+                return client.models.generate_content(
+                    model=model,
+                    contents=message,
+                    config=self._build_generate_config(
+                        system_prompt=system_prompt,
+                        max_output_tokens=output_tokens,
+                        thinking_budget=budget_for_call,
+                        json_mode=json_mode,
+                    ),
+                )
+            except Exception:
+                return None
+
+        completion_user = (
+            f"{user_message.rstrip()}\n\n"
+            "[HOÀN THIỆN] Trả lời đầy đủ, kết thúc bằng dấu chấm. Không dừng giữa câu."
+        )
+
+        for model in models:
+            for limit in limits:
+                response = _call(model, limit, thinking_budget, user_message)
+                if response is None:
+                    continue
                 text = _extract_gemini_text(response)
+                if not _gemini_output_truncated(response, text, requested_tokens=limit):
+                    return text
+
+            response = _call(model, 8192, thinking_budget, completion_user)
+            if response is None:
+                continue
+            text = _extract_gemini_text(response)
+            if not _gemini_output_truncated(response, text, requested_tokens=8192):
+                return text
+
         return text
 
 

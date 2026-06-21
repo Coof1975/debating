@@ -250,5 +250,6 @@ def generate_insight_report(
     report = llm.generate(
         get_domain(record.config.domain_id).prompts.insight_system,
         f"Biên bản cuộc họp:\n\n{body}",
+        max_tokens=record.config.insight_max_tokens,
     )
     return report.strip()

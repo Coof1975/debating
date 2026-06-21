@@ -13,6 +13,7 @@ from .models import (
     ReasoningResult,
     WorkingProposal,
 )
+from .text_quality import text_looks_incomplete
 
 
 def make_proposal_id(*, turn_index: int, speaker_id: str) -> str:
@@ -240,9 +241,15 @@ def check_proposal_consensus(state: MeetingState) -> bool:
     if config.proposal_consensus_mode == "secretary":
         return False
 
+    messages = state.get("messages") or []
+    if messages and any(text_looks_incomplete(turn.content) for turn in messages[-3:]):
+        return False
+
     proposals = state.get("working_proposals") or []
     best = best_active_proposal(proposals)
     if best is None:
+        return False
+    if len(best.approvals) < 2:
         return False
     if best.aggregate_score < config.consensus_threshold:
         return False

@@ -146,6 +146,7 @@ def test_check_proposal_consensus_requires_threshold_and_stakeholder() -> None:
         ),
         "working_proposals": [proposal],
         "turn_index": 5,
+        "messages": [],
     }
     assert check_proposal_consensus(state) is True
 
@@ -153,4 +154,20 @@ def test_check_proposal_consensus_requires_threshold_and_stakeholder() -> None:
     low.approvals["CEO"] = ProposalApproval(persona_id="CEO", score=0.5)
     low = with_aggregate(low)
     state["working_proposals"] = [low]
+    assert check_proposal_consensus(state) is False
+
+
+def test_check_proposal_consensus_rejects_single_approval() -> None:
+    proposal = with_aggregate(_sample_proposal())
+    state = {
+        "config": MeetingConfig(
+            enable_working_proposals=True,
+            proposal_consensus_mode="aggregate",
+            consensus_threshold=0.8,
+            key_stakeholders=["CEO"],
+        ),
+        "working_proposals": [proposal],
+        "turn_index": 5,
+        "messages": [],
+    }
     assert check_proposal_consensus(state) is False

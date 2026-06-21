@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { formatDate, statusClasses, statusLabel } from '../../lib/utils'
 import type { Meeting } from '../../types'
+import { MeetingIdBadge } from './MeetingIdBadge'
 
 type MeetingHeaderProps = {
   meeting: Meeting
@@ -29,6 +30,7 @@ export function MeetingHeader({
           Created {formatDate(meeting.created_at)}
           {meeting.scheduled_at && <> · Scheduled {formatDate(meeting.scheduled_at)}</>}
         </p>
+        <MeetingIdBadge id={meeting.id} className="mt-2" />
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
         <span

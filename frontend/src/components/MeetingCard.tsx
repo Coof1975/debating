@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { MeetingListItem } from '../types'
 import { formatDate, statusClasses, statusLabel } from '../lib/utils'
+import { MeetingIdBadge } from './meeting/MeetingIdBadge'
 
 type MeetingCardProps = {
   meeting: MeetingListItem
@@ -38,7 +39,8 @@ export function MeetingCard({ meeting, onDelete, deleting }: MeetingCardProps) {
         </div>
       </div>
       <Link to={`/meetings/${meeting.id}`} className="mt-4 block">
-        <div className="flex flex-col gap-1 text-xs text-slate-400 sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">
+        <div className="flex flex-col gap-2 text-xs text-slate-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-1">
+          <MeetingIdBadge id={meeting.id} />
           <span>Created {formatDate(meeting.created_at)}</span>
           {meeting.scheduled_at && <span>Scheduled {formatDate(meeting.scheduled_at)}</span>}
           {meeting.completed_at && <span>Completed {formatDate(meeting.completed_at)}</span>}

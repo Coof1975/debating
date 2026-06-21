@@ -27,7 +27,7 @@ class MeetingConfig(BaseModel):
     min_turns_before_stagnation: int = 8
     consensus_threshold: float = 0.8
     consensus_check_interval: int = 5
-    min_turns_before_consensus: int = 0
+    min_turns_before_consensus: int = 8
     stop_on_stakeholder_approval: bool = True
     enable_astrology: bool = True
     enable_consensus_check: bool = True
@@ -45,7 +45,7 @@ class MeetingConfig(BaseModel):
     llm_provider: LLMProviderName = "openai"
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.75
-    max_output_tokens: int = 1024
+    max_output_tokens: int = 2048
     use_mock: bool = False
     enable_internal_monologue: bool = True
     enable_relationship_reasoning: bool = True
@@ -58,8 +58,9 @@ class MeetingConfig(BaseModel):
     fact_extraction_min_confidence: float = 0.6
     max_shared_facts: int = 20
     fact_dedup_similarity_threshold: float = 0.85
-    reasoning_max_tokens: int = 512
-    speech_max_tokens: int = 512
+    reasoning_max_tokens: int = 1536
+    speech_max_tokens: int = 1024
+    insight_max_tokens: int = 8192
     # Post-meeting facilitator extension (Upgrade 2)
     enable_meeting_extension: bool = True
     extension_turn_budget: int = 8

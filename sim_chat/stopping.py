@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .config import MeetingConfig
+from .text_quality import text_looks_incomplete
 from .embeddings import compute_stagnation_signals
 from .models import DialogueTurn, MeetingState, SecretaryVerdict, TerminationReason
 from .proposals import check_proposal_consensus
@@ -63,6 +63,10 @@ def check_consensus(state: MeetingState) -> bool:
     if state["turn_index"] < config.min_turns_before_consensus:
         return False
 
+    messages = state.get("messages") or []
+    if messages and any(text_looks_incomplete(turn.content) for turn in messages[-3:]):
+        return False
+
     mode = config.proposal_consensus_mode
     if mode in ("aggregate", "both") and check_proposal_consensus(state):
         return True
@@ -107,12 +111,20 @@ def route_after_turn(state: MeetingState) -> str:
 
 def heuristic_consensus(messages: list[DialogueTurn], config: MeetingConfig) -> SecretaryVerdict:
     """Lightweight consensus estimate without LLM (fallback / dry-run)."""
-    if len(messages) < 3:
+    if len(messages) < 8:
         return SecretaryVerdict(
             consensus_score=0.2,
             has_consensus=False,
             key_stakeholder_approval=False,
             summary="Chưa đủ lượt phát biểu để đánh giá đồng thuận.",
+        )
+
+    if any(text_looks_incomplete(turn.content) for turn in messages[-4:]):
+        return SecretaryVerdict(
+            consensus_score=0.3,
+            has_consensus=False,
+            key_stakeholder_approval=False,
+            summary="Phát hiện phản hồi bị cắt giữa câu — chưa thể kết luận đồng thuận.",
         )
 
     recent = messages[-6:]

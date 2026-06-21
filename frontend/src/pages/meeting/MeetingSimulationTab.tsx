@@ -131,7 +131,7 @@ export function MeetingSimulationTab() {
               onChange={(e) => {
                 const nextProviderId = e.target.value
                 setProviderId(nextProviderId)
-                setModelId(defaultModelForProvider(nextProviderId))
+                setModelId(defaultModelForProvider(nextProviderId, providers))
               }}
               className="input-field"
             >

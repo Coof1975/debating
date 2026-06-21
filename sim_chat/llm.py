@@ -289,6 +289,47 @@ class OpenAILLMProvider:
         return (response.choices[0].message.content or "").strip()
 
 
+def _is_gemini_thinking_model(model: str) -> bool:
+    """Gemini 2.5+ allocates thinking tokens inside max_output_tokens."""
+    normalized = model.lower()
+    return "2.5" in normalized or normalized.startswith("gemini-3")
+
+
+def _gemini_finish_reason(response: object) -> str | None:
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return None
+    reason = getattr(candidates[0], "finish_reason", None)
+    return str(reason) if reason is not None else None
+
+
+def _gemini_output_truncated(response: object, text: str) -> bool:
+    reason = _gemini_finish_reason(response)
+    if reason and "MAX" in reason.upper():
+        return True
+    return bool(text) and not re.search(r"[.!?…\"'\)\]]\s*$", text)
+
+
+def _extract_gemini_text(response: object) -> str:
+    text = getattr(response, "text", None)
+    if text:
+        return str(text).strip()
+
+    chunks: list[str] = []
+    for candidate in getattr(response, "candidates", None) or []:
+        content = getattr(candidate, "content", None)
+        if content is None:
+            continue
+        for part in getattr(content, "parts", None) or []:
+            part_text = getattr(part, "text", None)
+            if not part_text:
+                continue
+            if getattr(part, "thought", False):
+                continue
+            chunks.append(str(part_text))
+    return "".join(chunks).strip()
+
+
 class GeminiLLMProvider:
     """Google Gemini backend."""
 
@@ -298,6 +339,24 @@ class GeminiLLMProvider:
         if not self.api_key:
             raise ValueError("Missing GOOGLE_API_KEY or GEMINI_API_KEY for GeminiLLMProvider")
 
+    def _build_generate_config(
+        self,
+        *,
+        system_prompt: str,
+        max_output_tokens: int,
+        thinking_budget: int | None,
+    ) -> object:
+        from google.genai import types
+
+        kwargs: dict = {
+            "system_instruction": system_prompt,
+            "temperature": self.config.llm_temperature,
+            "max_output_tokens": max_output_tokens,
+        }
+        if thinking_budget is not None:
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
+        return types.GenerateContentConfig(**kwargs)
+
     def generate(
         self,
         system_prompt: str,
@@ -306,19 +365,30 @@ class GeminiLLMProvider:
         max_tokens: int | None = None,
     ) -> str:
         from google import genai
-        from google.genai import types
 
         client = genai.Client(api_key=self.api_key)
-        response = client.models.generate_content(
-            model=self.config.llm_model,
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=self.config.llm_temperature,
-                max_output_tokens=max_tokens or self.config.max_output_tokens,
-            ),
-        )
-        return (response.text or "").strip()
+        max_out = max_tokens or self.config.max_output_tokens
+        thinking_budget = 0 if _is_gemini_thinking_model(self.config.llm_model) else None
+
+        def _call(output_tokens: int, budget: int | None) -> object:
+            return client.models.generate_content(
+                model=self.config.llm_model,
+                contents=user_message,
+                config=self._build_generate_config(
+                    system_prompt=system_prompt,
+                    max_output_tokens=output_tokens,
+                    thinking_budget=budget,
+                ),
+            )
+
+        response = _call(max_out, thinking_budget)
+        text = _extract_gemini_text(response)
+        if _gemini_output_truncated(response, text):
+            retry_tokens = max(max_out * 3, 2048)
+            if retry_tokens > max_out:
+                response = _call(retry_tokens, thinking_budget)
+                text = _extract_gemini_text(response)
+        return text
 
 
 def create_llm_provider(

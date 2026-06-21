@@ -24,9 +24,26 @@ export const DEFAULT_LLM_PROVIDERS: LlmProviderOption[] = [
   },
 ]
 
-export function defaultModelForProvider(providerId: string): string {
-  const provider = DEFAULT_LLM_PROVIDERS.find((p) => p.id === providerId)
+export function defaultModelForProvider(
+  providerId: string,
+  providers: LlmProviderOption[] = DEFAULT_LLM_PROVIDERS,
+): string {
+  const provider = providers.find((p) => p.id === providerId)
   return provider?.default_model ?? DEFAULT_OPENAI_MODEL
+}
+
+export function providerLabel(
+  providers: LlmProviderOption[],
+  providerId: string,
+): string {
+  return providers.find((p) => p.id === providerId)?.label ?? providerId
+}
+
+export function modelLabel(
+  provider: LlmProviderOption | undefined,
+  modelId: string,
+): string {
+  return provider?.models.find((m) => m.id === modelId)?.label ?? modelId
 }
 
 export function modelOptionsWithCurrent(

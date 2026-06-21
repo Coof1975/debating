@@ -7,7 +7,9 @@ import {
   DEFAULT_LLM_PROVIDERS,
   DEFAULT_OPENAI_MODEL,
   defaultModelForProvider,
+  modelLabel,
   modelOptionsWithCurrent,
+  providerLabel,
 } from '../../lib/llmOptions'
 
 type WizardData = {
@@ -130,7 +132,7 @@ export function MeetingWizard() {
     setData((prev) => ({
       ...prev,
       providerId,
-      modelId: defaultModelForProvider(providerId),
+      modelId: defaultModelForProvider(providerId, providers),
     }))
   }
 
@@ -377,6 +379,13 @@ export function MeetingWizard() {
                 <dt className="shrink-0 text-slate-500 sm:w-32">Tham gia</dt>
                 <dd>{data.selected.join(', ')}</dd>
               </div>
+              <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
+                <dt className="shrink-0 text-slate-500 sm:w-32">LLM</dt>
+                <dd>
+                  {providerLabel(providers, data.providerId)} /{' '}
+                  {modelLabel(activeProvider, data.modelId)}
+                </dd>
+              </div>
               {data.notes && (
                 <div className="flex flex-col gap-1 sm:flex-row sm:gap-2">
                   <dt className="shrink-0 text-slate-500 sm:w-32">Ghi chú</dt>
@@ -386,16 +395,9 @@ export function MeetingWizard() {
             </dl>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAdvanced((v) => !v)}
-            className="text-sm text-indigo-400 hover:text-indigo-300"
-          >
-            {showAdvanced ? 'Ẩn cấu hình simulation' : 'Cấu hình simulation (nâng cao)'}
-          </button>
-
-          {showAdvanced && (
-            <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-slate-300">Cấu hình LLM cho simulation</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-slate-300">LLM provider</label>
                 <select
@@ -420,19 +422,30 @@ export function MeetingWizard() {
                   ))}
                 </select>
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-300">Max turns</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={data.maxTurns}
-                  onChange={(e) =>
-                    setData((prev) => ({ ...prev, maxTurns: Number(e.target.value) }))
-                  }
-                  className={inputClass}
-                />
-              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-sm text-indigo-400 hover:text-indigo-300"
+          >
+            {showAdvanced ? 'Ẩn tùy chọn nâng cao' : 'Tùy chọn nâng cao'}
+          </button>
+
+          {showAdvanced && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-300">Max turns</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={data.maxTurns}
+                onChange={(e) =>
+                  setData((prev) => ({ ...prev, maxTurns: Number(e.target.value) }))
+                }
+                className={inputClass}
+              />
             </div>
           )}
 
